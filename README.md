@@ -1,6 +1,8 @@
 # submersible
 A toolbox for self-contained, spatial, audiovisual experiences.
 
+<img width="512" height="512" alt="submersibleconcept" src="https://github.com/user-attachments/assets/ab9b7304-8d6e-4865-a4fe-70c3617bb2ea" />
+
 ## What's in this repository?
 At the moment, this repo will contain the core tech as well as one or more implementations of "something that can be installed in a box-like room and has two or more screens and two or more channels of sound output that render a virtual 3d scene"
 

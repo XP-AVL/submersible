@@ -1,4 +1,16 @@
 {
-	"name": "SubmersibleDev.Runtime",
-	"references":[ "GUID:6423a74712d14c40aea62ad105061445" ]
+    "name": "SubmersibleDev.Runtime",
+    "rootNamespace": "SubmersibleDev.Runtime",
+    "references": [
+        "GUID:6423a74712d14c40aea62ad105061445"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
 }

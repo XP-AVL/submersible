@@ -148,7 +148,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2f60cb962e414d64b6a1faea2045c850, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  environmentPrefab: {fileID: -4388238757383978567, guid: 688dc948e9df7474f982d28597f79c58, type: 3}
+  environmentSceneName: PODS_16
   playerPrefab: {fileID: -8812134832739568659, guid: 74920a3dc3e1ba6479fb58f162f55928, type: 3}
 --- !u!4 &351141248
 Transform:

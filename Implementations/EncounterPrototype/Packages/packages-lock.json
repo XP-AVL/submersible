@@ -203,6 +203,12 @@
       },
       "url": "https://packages.unity.com"
     },
+    "com.xpavl.submersible": {
+      "version": "file:../../../SubmersibleUnityPlugin/",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {}
+    },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
       "depth": 0,

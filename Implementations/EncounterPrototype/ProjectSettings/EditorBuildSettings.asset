@@ -6,11 +6,16 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Encounter/Runtime/Encounter.unity
+    path: Assets/Encounter/Encounter.unity
     guid: 074b836ea547d3746bc3bae42e3873a9
   - enabled: 1
-    path: Assets/Encounter/Runtime/Previs/Environments/PODS_16.unity
+    path: Assets/Encounter/Previs/Environments/PODS_16.unity
     guid: 7cba263034a03984dba9a441f90a6b59
+  - enabled: 1
+    path: Assets/Encounter/Experience/Environments/CreatureEnvironment.unity
+    guid: d5190c54acfc4584292261736b6759cc
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 011df6a8599b51d41a688df85d3b6173, type: 2}
+    com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 95bdb2ae70be58b429433dae6f935ef2, type: 2}
   m_UseUCBPForAssetBundles: 0

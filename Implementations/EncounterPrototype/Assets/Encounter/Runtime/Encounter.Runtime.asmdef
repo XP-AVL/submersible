@@ -2,7 +2,8 @@
     "name": "Encounter.Runtime",
     "rootNamespace": "",
     "references": [
-        "GUID:6423a74712d14c40aea62ad105061445"
+        "GUID:6423a74712d14c40aea62ad105061445",
+        "GUID:75469ad4d38634e559750d17036d5f7c"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

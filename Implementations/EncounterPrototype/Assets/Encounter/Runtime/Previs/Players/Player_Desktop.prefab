@@ -146,7 +146,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8420453410513911956}
-  - component: {fileID: 7194461629080447521}
   - component: {fileID: 3671853119763157362}
   m_Layer: 0
   m_Name: Player_Desktop
@@ -171,18 +170,6 @@ Transform:
   - {fileID: 1485027997279727873}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &7194461629080447521
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7369655011329827944}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4b8f953cc0394db7a9d0b7f08fdb2336, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!114 &3671853119763157362
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -198,4 +185,5 @@ MonoBehaviour:
   lookSpeed: {x: 100, y: 100}
   moveSpeed: {x: 100, y: 100}
   smoothTime: 0.2
+  sprintSpeedMultiplier: 2
   invertY: 0

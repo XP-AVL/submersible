@@ -6,10 +6,10 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Encounter/Scenes/Encounter.unity
+    path: Assets/Encounter/Runtime/Encounter.unity
     guid: 074b836ea547d3746bc3bae42e3873a9
   - enabled: 1
-    path: Assets/Encounter/Scenes/Environments/PODS_16.unity
+    path: Assets/Encounter/Runtime/Previs/Environments/PODS_16.unity
     guid: 7cba263034a03984dba9a441f90a6b59
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

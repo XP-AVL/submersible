@@ -1,8 +1,12 @@
 ﻿using UnityEngine;
 using UnityEngine.InputSystem;
 
-namespace Encounter.Runtime
+namespace Submersible.Runtime.Previs
 {
+    /// <summary>
+    /// First-person flying camera controller.
+    /// Useful for previs and debugging, but doesn't do all the things you'll likely want for a real player controller.
+    /// </summary>
     public class CameraFly : MonoBehaviour
     {
         [Header("Movement Settings")]

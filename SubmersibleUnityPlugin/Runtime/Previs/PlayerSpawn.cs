@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace Encounter.Runtime
+namespace Submersible.Runtime.Previs
 {
     public class PlayerSpawn : MonoBehaviour
     {

@@ -149,7 +149,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   environmentSceneName: PODS_16
-  playerPrefab: {fileID: -8812134832739568659, guid: 74920a3dc3e1ba6479fb58f162f55928, type: 3}
+  playerPrefab: {fileID: 7194461629080447521, guid: e1f9ffa7b589b6443a5cbed65fa7a4bd, type: 3}
 --- !u!4 &351141248
 Transform:
   m_ObjectHideFlags: 0

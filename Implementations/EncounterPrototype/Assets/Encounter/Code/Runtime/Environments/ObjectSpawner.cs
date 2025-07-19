@@ -39,7 +39,7 @@ namespace Encounter.Runtime.Environments
         {
             // Random X and Z coordinates around the spawner's position
             float randomX = transform.position.x + Random.Range(-spawnRangeX, spawnRangeX);
-            float randomZ = transform.position.z + Random.Range(0, spawnRangeZ);
+            float randomZ = transform.position.z + Random.Range(-spawnRangeZ, spawnRangeZ);
         
             return new Vector3(randomX, transform.position.y + spawnHeight, randomZ);
         }

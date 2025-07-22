@@ -159,6 +159,19 @@ public class WhaleConductor : MonoBehaviour
             Debug.Log($"🎵 Using noise-based detection: Human voice (noisy) vs FM synth (pure)");
             
             if (useMelodicLock)
+<<<<<<< HEAD
+=======
+            {
+                Debug.Log($"🎼 MELODIC MODE ACTIVE! Sing these intervals: {string.Join(", ", targetIntervals)} semitones");
+                Debug.Log($"   (That's C → G → High C - a perfect fifth then an octave!)");
+            }
+        }
+
+        private void Update()
+        {
+            // Check microphone input at specified rate
+            if (Time.time - _lastVolumeCheck >= updateRate)
+>>>>>>> 7796bd4428294528c037a4b3fa29e16495be3c43
             {
                 Debug.Log($"🎼 MELODIC MODE ACTIVE! Sing these intervals: {string.Join(", ", targetIntervals)} semitones");
                 Debug.Log($"   (That's C → G → High C - a perfect fifth then an octave!)");
@@ -185,6 +198,16 @@ public class WhaleConductor : MonoBehaviour
                     ResetMelodicDetection();
                 }
             }
+            
+            // Check for melodic timeout - if they stopped singing mid-melody
+            if (useMelodicLock && detectedIntervals.Count > 0 && !isCurrentlyVoicing)
+            {
+                if (Time.time - lastNoteTime > maxPauseBetweenNotes)
+                {
+                    Debug.Log("🎵 Melody timed out! Starting over...");
+                    ResetMelodicDetection();
+                }
+            }
         }
     }
     
@@ -199,10 +222,13 @@ public class WhaleConductor : MonoBehaviour
             {
                 _microphoneName = Microphone.devices[0];
                 Debug.Log($"🎤 Using microphone: {_microphoneName}");
+<<<<<<< HEAD
 =======
             microphoneName = Microphone.devices[0];
             Debug.Log($"🎤 Using microphone: {microphoneName}");
 >>>>>>> Stashed changes
+=======
+>>>>>>> 7796bd4428294528c037a4b3fa29e16495be3c43
             
             // Start recording from microphone
             microphoneClip = Microphone.Start(microphoneName, true, 1, sampleRate);
@@ -287,6 +313,7 @@ public class WhaleConductor : MonoBehaviour
         
             // ✨ NEW: If we're in melodic mode, also detect pitch! ✨
             if (useMelodicLock && rms >= volumeThreshold && isHumanVoice)
+<<<<<<< HEAD
             {
                 HandleMelodicDetection();
             }
@@ -320,6 +347,36 @@ public class WhaleConductor : MonoBehaviour
                 }
             }
         
+=======
+            {
+                HandleMelodicDetection();
+            }
+            else if (!useMelodicLock)
+            {
+                // Original sustained note behavior
+                HandleSustainedNote(rms, isHumanVoice);
+            }
+            else
+            {
+                // Not singing or not human voice
+                isCurrentlyVoicing = false;
+                currentNoteStartTime = -1f;
+            }
+        
+            // Debug output
+            if (debugMicrophone && Time.time % 0.5f < updateRate)
+            {
+                if (useMelodicLock && currentStablePitch > 0)
+                {
+                    Debug.Log($"🎵 Pitch: {currentStablePitch:F1}Hz | Intervals found: {detectedIntervals.Count}/{targetIntervals.Length}");
+                }
+                else
+                {
+                    Debug.Log($"Vol: {rms:F4} | Human: {isHumanVoice} | Threshold: {volumeThreshold:F4}");
+                }
+            }
+        
+>>>>>>> 7796bd4428294528c037a4b3fa29e16495be3c43
             // Store current buffer for next comparison
             System.Array.Copy(_analysisBuffer, _previousBuffer, analysisWindowSize);
         }
@@ -528,6 +585,7 @@ public class WhaleConductor : MonoBehaviour
                 }
             }
             else
+<<<<<<< HEAD
 =======
         // Store current buffer for next comparison
         System.Array.Copy(analysisBuffer, previousBuffer, analysisWindowSize);
@@ -547,6 +605,27 @@ public class WhaleConductor : MonoBehaviour
         // Think of this like a low-pass filter for pitch!
         recentPitches.Enqueue(currentPitch);
         while (recentPitches.Count > pitchSmoothingFrames)
+=======
+            {
+                // Reset sustain timer if voice not detected
+                if (_sustainStartTime >= 0)
+                {
+                    float sustainedDuration = Time.time - _sustainStartTime;
+                    if (sustainedDuration < sustainedTime)
+                    {
+                        string reason = !isHumanVoice ? "too pure (not human voice)" : "volume too low";
+                        if (showFrequencyDebug)
+                        {
+                            Debug.Log($"Voice lost ({sustainedDuration:F1}s) - {reason}");
+                        }
+                    }
+                    _sustainStartTime = -1f;
+                }
+            }
+        }
+
+        private float CalculateRms(float[] audioData)
+>>>>>>> 7796bd4428294528c037a4b3fa29e16495be3c43
         {
             recentPitches.Dequeue();
         }
@@ -828,10 +907,21 @@ public class WhaleConductor : MonoBehaviour
             float smoothed = (audioData[i-2] + audioData[i-1] + audioData[i] + audioData[i+1] + audioData[i+2]) / 5f;
             float deviation = Mathf.Abs(audioData[i] - smoothed);
             
+<<<<<<< HEAD
             totalVariation += deviation;
             totalEnergy += Mathf.Abs(audioData[i]);
         }
 <<<<<<< Updated upstream
+=======
+                totalVariation += deviation;
+                totalEnergy += Mathf.Abs(audioData[i]);
+            }
+        
+            // Normalize by total energy to get relative noise level
+            if (totalEnergy < 0.001f) return 0f;
+            return totalVariation / totalEnergy;
+        }
+>>>>>>> 7796bd4428294528c037a4b3fa29e16495be3c43
 
         private void RefreshWhaleList()
         {
@@ -944,7 +1034,10 @@ public class WhaleConductor : MonoBehaviour
             {
                 if (whale != null)
                 {
+<<<<<<< HEAD
 <<<<<<< Updated upstream
+=======
+>>>>>>> 7796bd4428294528c037a4b3fa29e16495be3c43
                     whale.PauseForChorus(pauseDuration + (melodyPitches.Length * 2f)); // Longer pause for melody
                 }
             }
@@ -956,10 +1049,59 @@ public class WhaleConductor : MonoBehaviour
             Debug.Log("🐋 WHALE MELODIC CHORUS BEGINS! 🐋");
             
             if (useMelodicLock && melodyPitches.Length > 0)
+<<<<<<< HEAD
 =======
                     // All whales sing the tonic (base note) together
                     float delay = Random.Range(0f, chorusSpread * 0.5f); // Tighter timing for finale
                     StartCoroutine(DelayedMelodicWhaleCall(whale, delay, basePitch));
+=======
+            {
+                // MELODIC MODE: Whales sing the notes in sequence!
+                string[] noteNames = { "C", "G", "High C" };
+                
+                for (int noteIndex = 0; noteIndex < melodyPitches.Length; noteIndex++)
+                {
+                    Debug.Log($"🎵 Whales singing note {noteIndex + 1}: {noteNames[noteIndex]} ({melodyPitches[noteIndex]:F1}Hz)");
+                    
+                    // Each whale sings the same note, but with slight timing variation
+                    foreach (var whale in _allWhales)
+                    {
+                        if (whale != null)
+                        {
+                            float delay = Random.Range(0f, chorusSpread);
+                            StartCoroutine(DelayedMelodicWhaleCall(whale, delay, melodyPitches[noteIndex]));
+                        }
+                    }
+                    
+                    // Wait for this note to finish before the next one
+                    yield return new WaitForSeconds(1.5f); // Time between melody notes
+                }
+                
+                // Optional: Whales all sing the final note together as a big finish!
+                yield return new WaitForSeconds(0.5f);
+                Debug.Log("🎊 FINALE: All whales sing C together! 🎊");
+                
+                foreach (var whale in _allWhales)
+                {
+                    if (whale != null)
+                    {
+                        // All whales sing the tonic (base note) together
+                        float delay = Random.Range(0f, chorusSpread * 0.5f); // Tighter timing for finale
+                        StartCoroutine(DelayedMelodicWhaleCall(whale, delay, basePitch));
+                    }
+                }
+            }
+            else
+            {
+                // SUSTAINED MODE: Original behavior - all whales call at once
+                foreach (var whale in _allWhales)
+                {
+                    if (whale != null)
+                    {
+                        float delay = Random.Range(0f, chorusSpread);
+                        StartCoroutine(DelayedWhaleCall(whale, delay));
+                    }
+>>>>>>> 7796bd4428294528c037a4b3fa29e16495be3c43
                 }
             }
         }
@@ -1103,7 +1245,10 @@ public class WhaleConductor : MonoBehaviour
     {
         if (!debugMicrophone) return;
         
+<<<<<<< HEAD
 <<<<<<< Updated upstream
+=======
+>>>>>>> 7796bd4428294528c037a4b3fa29e16495be3c43
             GUI.Box(new Rect(10, 10, 350, useMelodicLock ? 200 : 120), "🐋 Whale Conductor 🎵");
         
             GUI.Label(new Rect(20, 35, 320, 20), $"Whales found: {_allWhales?.Length ?? 0}");
@@ -1161,6 +1306,7 @@ public class WhaleConductor : MonoBehaviour
                 {
                     GUI.Label(new Rect(20, 95, 320, 20), "Sing to conduct the whale chorus!");
                 }
+<<<<<<< HEAD
 =======
         GUI.Box(new Rect(10, 10, 350, useMelodicLock ? 200 : 120), "🐋 Whale Conductor 🎵");
         
@@ -1218,6 +1364,8 @@ public class WhaleConductor : MonoBehaviour
             {
                 GUI.Label(new Rect(20, 95, 320, 20), "Sing to conduct the whale chorus!");
 >>>>>>> Stashed changes
+=======
+>>>>>>> 7796bd4428294528c037a4b3fa29e16495be3c43
             }
         }
     }

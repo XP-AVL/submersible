@@ -73,10 +73,10 @@ public class WhaleConductor : MonoBehaviour
         
         [Header("🎵 MELODIC LOCK SETTINGS! 🎵")]
         [SerializeField] private bool useMelodicLock = true;             // Toggle between sustained note and melody modes
-        [SerializeField] private float[] targetIntervals = { 0, 4, 0 };  // C -> D (perfect 3rd) -> C
-        [SerializeField] private float intervalTolerance = 2f;         // How many semitones off we allow (1.5 = pretty forgiving!)
+        [SerializeField] private float[] targetIntervals = { 0, 7, 12 };  // C -> G (perfect 5th) -> High C (octave)! Musical magic!
+        [SerializeField] private float intervalTolerance = 1.5f;         // How many semitones off we allow (1.5 = pretty forgiving!)
         [SerializeField] private float noteHoldTime = 0.1f;              // How long they need to hold each note
-        [SerializeField] private float maxPauseBetweenNotes = 10.0f;      // Reset if they pause too long
+        [SerializeField] private float maxPauseBetweenNotes = 2.0f;      // Reset if they pause too long
         [SerializeField] private int pitchSmoothingFrames = 5;           // How many frames we average for stable pitch
     
         [Header("Whale Response")]
@@ -1253,7 +1253,7 @@ public class WhaleConductor : MonoBehaviour
         
             GUI.Label(new Rect(20, 35, 320, 20), $"Whales found: {_allWhales?.Length ?? 0}");
             GUI.Label(new Rect(20, 55, 320, 20), $"Microphone: {(_isListening ? "Active" : "Inactive")}");
-            GUI.Label(new Rect(20, 75, 320, 20), $"Mode: {(useMelodicLock ? "🎵 Melodic Lock (C-D-C)" : "🎤 Sustained Note")}");
+            GUI.Label(new Rect(20, 75, 320, 20), $"Mode: {(useMelodicLock ? "🎵 Melodic Lock (C-G-C)" : "🎤 Sustained Note")}");
             
             if (useMelodicLock)
             {
@@ -1266,7 +1266,7 @@ public class WhaleConductor : MonoBehaviour
                 float boxWidth = 100;
                 float boxHeight = 25;
                 
-                string[] noteLabels = { "C", "D", "C" };
+                string[] noteLabels = { "C", "G", "High C" };
                 
                 for (int i = 0; i < targetIntervals.Length; i++)
                 {

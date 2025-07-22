@@ -139,10 +139,6 @@ PrefabInstance:
       propertyPath: m_LocalScale.z
       value: 0.1
       objectReference: {fileID: 0}
-    - target: {fileID: 5425062034378237681, guid: 0ab27cb27ef911b4aa0ffdccc4aedc2b, type: 3}
-      propertyPath: m_Enabled
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 7303533272404121622, guid: 0ab27cb27ef911b4aa0ffdccc4aedc2b, type: 3}
       propertyPath: m_Name
       value: SimulatedWindow
@@ -211,10 +207,6 @@ PrefabInstance:
     - target: {fileID: 5218558146349443954, guid: 0ab27cb27ef911b4aa0ffdccc4aedc2b, type: 3}
       propertyPath: m_LocalScale.z
       value: 0.1
-      objectReference: {fileID: 0}
-    - target: {fileID: 5425062034378237681, guid: 0ab27cb27ef911b4aa0ffdccc4aedc2b, type: 3}
-      propertyPath: m_Enabled
-      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7303533272404121622, guid: 0ab27cb27ef911b4aa0ffdccc4aedc2b, type: 3}
       propertyPath: m_Name

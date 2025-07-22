@@ -157,15 +157,6 @@ MonoBehaviour:
   fundamentalFreqMax: 400
   analysisWindowSize: 512
   showFrequencyDebug: 0
-  useMelodicLock: 1
-  targetIntervals:
-  - 0
-  - 4
-  - 0
-  intervalTolerance: 2
-  noteHoldTime: 0.1
-  maxPauseBetweenNotes: 10
-  pitchSmoothingFrames: 5
   pauseDuration: 1
   chorusSpread: 0.3
   debugMicrophone: 0

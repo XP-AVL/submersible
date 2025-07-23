@@ -224,7 +224,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e28a0114d781143779e0725c3188e022, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  voiceDetector: {fileID: 203124033}
+  voiceDetector: {fileID: 0}
   pitchSmoothingFrames: 5
   pitchChangeThreshold: 5
   minConfidence: 0.6

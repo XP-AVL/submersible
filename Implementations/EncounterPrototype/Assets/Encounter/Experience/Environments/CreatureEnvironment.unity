@@ -129,6 +129,8 @@ GameObject:
   m_Component:
   - component: {fileID: 203124032}
   - component: {fileID: 203124031}
+  - component: {fileID: 203124033}
+  - component: {fileID: 203124034}
   m_Layer: 0
   m_Name: ConductorMic
   m_TagString: Untagged
@@ -143,7 +145,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 203124030}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 545c7427ebbc44bb2806194aa9e829f1, type: 3}
   m_Name: 
@@ -157,6 +159,15 @@ MonoBehaviour:
   fundamentalFreqMax: 400
   analysisWindowSize: 512
   showFrequencyDebug: 0
+  useMelodicLock: 1
+  targetIntervals:
+  - 0
+  - 4
+  - 0
+  intervalTolerance: 2
+  noteHoldTime: 0.1
+  maxPauseBetweenNotes: 10
+  pitchSmoothingFrames: 5
   pauseDuration: 1
   chorusSpread: 0.3
   debugMicrophone: 0
@@ -175,6 +186,56 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &203124033
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 203124030}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 880ccfea2a27f486fb39781d83fd71ea, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  volumeThreshold: 0.02
+  sampleRate: 44100
+  updateRate: 0.1
+  analysisWindowSize: 512
+  noiseThreshold: 0.001
+  fundamentalFreqMin: 80
+  fundamentalFreqMax: 400
+  confidenceThreshold: 0.7
+  stabilityFrames: 3
+  noiseWeight: 0.5
+  frequencyWeight: 0.3
+  energyWeight: 0.2
+  debugOutput: 0
+  showDetailedMetrics: 0
+--- !u!114 &203124034
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 203124030}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e28a0114d781143779e0725c3188e022, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  voiceDetector: {fileID: 203124033}
+  pitchSmoothingFrames: 5
+  pitchChangeThreshold: 5
+  minConfidence: 0.6
+  sampleRate: 44100
+  a4Frequency: 440
+  useFlats: 0
+  fundamentalFreqMin: 80
+  fundamentalFreqMax: 400
+  minPitchStability: 0.8
+  debugOutput: 1
+  showDetailedPitch: 0
 --- !u!1 &1373746042
 GameObject:
   m_ObjectHideFlags: 0

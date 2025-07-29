@@ -145,32 +145,29 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 203124030}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 545c7427ebbc44bb2806194aa9e829f1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  bpm: 80
+  melody:
+  - noteName: 0
+    octave: 4
+  - noteName: 4
+    octave: 4
+  - noteName: 7
+    octave: 4
+  - noteName: 0
+    octave: 4
   volumeThreshold: 0.02
-  sustainedTime: 2
-  sampleRate: 44100
-  updateRate: 0.1
-  noiseThreshold: 0.002
   fundamentalFreqMin: 80
   fundamentalFreqMax: 400
+  noiseThreshold: 0.000002
   analysisWindowSize: 512
-  showFrequencyDebug: 0
-  useMelodicLock: 1
-  targetIntervals:
-  - 0
-  - 4
-  - 0
-  intervalTolerance: 2
-  noteHoldTime: 0.1
-  maxPauseBetweenNotes: 10
-  pitchSmoothingFrames: 5
-  pauseDuration: 1
-  chorusSpread: 0.3
-  debugMicrophone: 0
+  debugMicrophone: 1
+  sampleRate: 44100
+  updateRate: 0.1
 --- !u!4 &203124032
 Transform:
   m_ObjectHideFlags: 0
@@ -193,7 +190,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 203124030}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 880ccfea2a27f486fb39781d83fd71ea, type: 3}
   m_Name: 
@@ -219,12 +216,12 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 203124030}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e28a0114d781143779e0725c3188e022, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  voiceDetector: {fileID: 0}
+  voiceDetector: {fileID: 203124033}
   pitchSmoothingFrames: 5
   pitchChangeThreshold: 5
   minConfidence: 0.6

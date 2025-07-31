@@ -1,168 +1,378 @@
 using UnityEngine;
 using System.Collections;
+using Encounter.Runtime.Environments;
 
 namespace Encounter.Runtime.Creatures
 {
+    public enum NoteDuration
+    {
+        Whole = 4,      // 4 beats
+        Half = 2,       // 2 beats  
+        Quarter = 1,    // 1 beat
+        Eighth = 0,     // 0.5 beats (handled specially)
+        Sixteenth = -1  // 0.25 beats (handled specially)
+    }
+
     public class WhaleCallBehavior : MonoBehaviour
     {
-        [Header("Call Timing")]
-        [SerializeField] private float minCallInterval = 3f;
-        [SerializeField] private float maxCallInterval = 12f;
-        [SerializeField] private float responseChance = 0.3f;
-        [SerializeField] private float listenRange = 80f;
-    
-        [Header("Individual Personality")]
-        [SerializeField] private float chattiness = 1f;
-        [SerializeField] private float shyness;
-    
-        [Header("Gill Glow System")]
+        [Header("🎵 Musical Personality")]
+        [SerializeField] private NoteDuration noteDuration = NoteDuration.Quarter;
+        [SerializeField] private int octaveOffset = 0; // -2 to +2 octaves
+        [SerializeField] private float pitchVariation = 0.02f; // Slight voice-like pitch drift
+        
+        [Header("🎭 Response Behavior")]
+        [SerializeField] private float baseInterval = 25f; // When player NOT singing (very sparse!)
+        [SerializeField] private float activeInterval = 1f; // Not used in new system
+        [SerializeField] private float intervalDecayRate = 1f; // Not used in new system
+        
+        [Header("🌟 Visual Effects")]
         [SerializeField] private JellyfishGill gillSystem;
         [SerializeField] private string glowPropertyName = "_GlowIntensity";
         [SerializeField] private float baseGlowIntensity = 4f;
-        [SerializeField] private bool useNoteBasedColors = true;
         
-        [Header("🎵 Melodic Singing")]
-        [SerializeField] private bool canSingMelodies = true;
-        [SerializeField] private float pitchAccuracy = 0.95f;
-        [SerializeField] private float melodicCallDuration = 1.2f;
-        [SerializeField] private AnimationCurve melodicVolumeEnvelope;
-    
+        // Private variables
         private WhaleCallSynthesizer _synthesizer;
-        private float _nextCallTime;
-        private float _lastCallTime = -999f;
-    
-        // Gill glow system variables
-        private Coroutine _currentGlowCoroutine;
         private Material _uniqueGillMaterial;
-        private float _currentGlowIntensity;
-        private Color _whaleNoteColor;
-    
-        // Conductor system variables
-        private bool _isPausedForChorus;
-        private float _pauseEndTime;
+        private Coroutine _currentGlowCoroutine;
         
-        // Melodic singing variables
-        private float originalCarrierFrequency;
-        private bool isSingingMelody = false;
-    
-        // Static variables to manage the pod's overall behavior
-        private static float _lastAnyWhaleCallTime = -999f;
-        private static int _activeCalls;
-        private static readonly int Color1 = Shader.PropertyToID("_Color");
-        private const float PodQuietPeriod = 2f;
+        // Musical timing
+        private float _beatsUntilNextCall;
+        private float _currentInterval;
+        private bool _lastPlayerSingingState = false;
+        private float[] _melody; // Cache the conductor's melody
+        private bool _isPlayingMelody = false;
+        private bool _isContinuousMode = false; // New: loop mode when player sings
+        private Coroutine _continuousMelodyCoroutine;
+        
+        // Beat subdivision handling
+        private int _subdivisionCounter = 0;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        private static void ResetStaticVariables()
+        private void Start()
         {
-            _lastAnyWhaleCallTime = -999f;
-            _activeCalls = 0;
+            // Get synthesizer component
+            _synthesizer = GetComponent<WhaleCallSynthesizer>();
+            
+            // Initialize gill glow system
+            InitializeGillGlow();
+            
+            // Randomize musical personality
+            RandomizePersonality();
+            
+            // Subscribe to conductor beats
+            WhaleConductor.OnBeat += HandleBeat;
+            
+            // Initialize timing
+            _currentInterval = baseInterval;
+            _beatsUntilNextCall = Random.Range(1f, baseInterval);
+            
+            // Get melody from conductor (we'll update this periodically)
+            RefreshMelodyFromConductor();
+            
+            Debug.Log($"🐙 Jelly {gameObject.name} initialized: {noteDuration} notes, octave {octaveOffset:+0;-0;0}");
         }
-    
+
+        private void OnDestroy()
+        {
+            // Unsubscribe from conductor beats
+            WhaleConductor.OnBeat -= HandleBeat;
+            
+            // Clean up continuous melody coroutine
+            if (_continuousMelodyCoroutine != null)
+            {
+                StopCoroutine(_continuousMelodyCoroutine);
+            }
+        }
+
+        private void HandleBeat(int beatNumber, float currentNote, bool isPlayerSinging)
+        {
+            // Handle the dramatic difference based on player singing
+            if (isPlayerSinging && !_lastPlayerSingingState)
+            {
+                // Player just started singing - BEGIN CONTINUOUS MELODY LOOP!
+                StartContinuousMelodyMode();
+                Debug.Log($"🎤 {gameObject.name} PLAYER STARTED SINGING - Beginning continuous melody loop!");
+            }
+            else if (!isPlayerSinging && _lastPlayerSingingState)
+            {
+                // Player stopped singing - RETURN TO SPARSE MODE
+                StopContinuousMelodyMode();
+                Debug.Log($"🎤 {gameObject.name} Player stopped singing - Returning to sparse mode");
+            }
+            
+            // Only do sparse timing when player is NOT singing
+            if (!isPlayerSinging && !_isContinuousMode)
+            {
+                // Original sparse behavior for when player is silent
+                HandleSparseTiming(beatNumber);
+            }
+            
+            _lastPlayerSingingState = isPlayerSinging;
+        }
+
+        private void HandleSparseTiming(int beatNumber)
+        {
+            // Handle subdivision timing for eighth and sixteenth notes
+            bool shouldProcessBeat = ShouldProcessThisBeat(beatNumber);
+            if (!shouldProcessBeat) return;
+            
+            // Countdown to next call (very sparse)
+            _beatsUntilNextCall -= GetBeatSubdivision();
+            
+            // Time to sing the melody? (rarely)
+            if (_beatsUntilNextCall <= 0)
+            {
+                StartCoroutine(PlayMelodySequence());
+                ResetCallTimer();
+            }
+        }
+
+        private void StartContinuousMelodyMode()
+        {
+            if (_isContinuousMode) return; // Already in continuous mode
+            
+            _isContinuousMode = true;
+            
+            // Stop any existing melody
+            if (_continuousMelodyCoroutine != null)
+            {
+                StopCoroutine(_continuousMelodyCoroutine);
+            }
+            
+            // Start continuous melody loop
+            _continuousMelodyCoroutine = StartCoroutine(ContinuousMelodyLoop());
+        }
+
+        private void StopContinuousMelodyMode()
+        {
+            _isContinuousMode = false;
+            
+            if (_continuousMelodyCoroutine != null)
+            {
+                StopCoroutine(_continuousMelodyCoroutine);
+                _continuousMelodyCoroutine = null;
+            }
+            
+            // Reset sparse timing
+            ResetCallTimer();
+        }
+
+        private IEnumerator ContinuousMelodyLoop()
+        {
+            while (_isContinuousMode)
+            {
+                // Play the full melody
+                yield return StartCoroutine(PlayMelodySequence());
+                
+                // Brief pause before next loop (based on note duration personality)
+                float pauseDuration = GetLoopPauseDuration();
+                yield return new WaitForSeconds(pauseDuration);
+            }
+        }
+
+        private float GetLoopPauseDuration()
+        {
+            // Different jellies have different loop speeds based on their note duration
+            switch (noteDuration)
+            {
+                case NoteDuration.Whole: return 3f;      // Slow, majestic
+                case NoteDuration.Half: return 2f;       // Medium-slow
+                case NoteDuration.Quarter: return 1f;    // Regular pace
+                case NoteDuration.Eighth: return 0.5f;   // Quick
+                case NoteDuration.Sixteenth: return 0.25f; // Very quick
+                default: return 1f;
+            }
+        }
+
+        private bool ShouldProcessThisBeat(int beatNumber)
+        {
+            switch (noteDuration)
+            {
+                case NoteDuration.Eighth:
+                    // Process every beat (twice as fast as quarter notes)
+                    return true;
+                    
+                case NoteDuration.Sixteenth:
+                    // We'll simulate this by processing every beat but with quarter timing
+                    // This is a simplification for the MVP
+                    return true;
+                    
+                default:
+                    // Whole, Half, Quarter notes process every beat normally
+                    return true;
+            }
+        }
+
+        private float GetBeatSubdivision()
+        {
+            switch (noteDuration)
+            {
+                case NoteDuration.Eighth:
+                    return 0.5f; // Half beat
+                case NoteDuration.Sixteenth:
+                    return 0.25f; // Quarter beat
+                default:
+                    return 1f; // Full beat
+            }
+        }
+
+        private void AdjustIntervalBasedOnPlayer(bool isPlayerSinging)
+        {
+            if (isPlayerSinging && !_lastPlayerSingingState)
+            {
+                // Player just started singing - get more active!
+                Debug.Log($"🎤 {gameObject.name} heard the player start singing!");
+            }
+            
+            if (isPlayerSinging)
+            {
+                // Gradually get more active while player sings
+                _currentInterval = Mathf.Lerp(_currentInterval, activeInterval, intervalDecayRate * Time.deltaTime);
+            }
+            else
+            {
+                // Gradually return to base interval when player stops
+                _currentInterval = Mathf.Lerp(_currentInterval, baseInterval, intervalDecayRate * Time.deltaTime * 0.5f);
+            }
+            
+            _lastPlayerSingingState = isPlayerSinging;
+        }
+
+        private IEnumerator PlayMelodySequence()
+        {
+            if (_isPlayingMelody || _melody == null || _melody.Length == 0) yield break;
+            
+            _isPlayingMelody = true;
+            
+            Debug.Log($"🎵 {gameObject.name} starting melody sequence!");
+            
+            // Play through each note in the melody
+            for (int noteIndex = 0; noteIndex < _melody.Length; noteIndex++)
+            {
+                float baseFrequency = _melody[noteIndex];
+                SingNote(baseFrequency, noteIndex);
+                
+                // Wait for this note to finish before the next one
+                // Use a fraction of the synthesizer's call duration so melody plays smoothly
+                float noteDuration = (_synthesizer?.CallDuration ?? 2f) / _melody.Length;
+                yield return new WaitForSeconds(noteDuration);
+            }
+            
+            _isPlayingMelody = false;
+            Debug.Log($"🎵 {gameObject.name} finished melody sequence!");
+        }
+
+        private void SingNote(float baseFrequency, int noteIndex = 0)
+        {
+            if (_synthesizer == null) return;
+            
+            // Calculate frequency with octave offset
+            float octaveMultiplier = Mathf.Pow(2f, octaveOffset);
+            float targetFrequency = baseFrequency * octaveMultiplier;
+            
+            // Add slight pitch variation for voice-like quality
+            float pitchDrift = Random.Range(-pitchVariation, pitchVariation);
+            float finalFrequency = targetFrequency * (1f + pitchDrift);
+            
+            // Set synthesizer frequency and trigger
+            _synthesizer.CarrierFrequency = finalFrequency;
+            _synthesizer.TriggerCall();
+            
+            // Start visual glow effect
+            StartGillGlow(finalFrequency);
+            
+            string noteName = GetNoteName(finalFrequency);
+            Debug.Log($"🎵 {gameObject.name} sings note {noteIndex + 1}: {noteName} ({finalFrequency:F1}Hz)");
+        }
+
+        private void RefreshMelodyFromConductor()
+        {
+            // Get melody from any WhaleConductor in the scene
+            WhaleConductor conductor = FindFirstObjectByType<WhaleConductor>();
+            if (conductor != null)
+            {
+                _melody = conductor.Melody;
+                Debug.Log($"🎼 {gameObject.name} got melody: {_melody.Length} notes");
+            }
+            else
+            {
+                // Fallback default melody if no conductor found
+                _melody = new float[] { 261.63f, 329.63f, 392.00f, 261.63f }; // C-E-G-C
+                Debug.LogWarning($"🎼 {gameObject.name} no conductor found, using default melody");
+            }
+        }
+
+        private void ResetCallTimer()
+        {
+            // Set next call time based on note duration and current interval
+            float baseDuration = (int)noteDuration;
+            
+            // Handle special cases for subdivisions
+            if (noteDuration == NoteDuration.Eighth)
+                baseDuration = 0.5f;
+            else if (noteDuration == NoteDuration.Sixteenth)
+                baseDuration = 0.25f;
+            
+            // Apply current interval multiplier and some randomness
+            float randomMultiplier = Random.Range(0.8f, 1.2f);
+            _beatsUntilNextCall = (baseDuration * _currentInterval * randomMultiplier);
+            
+            Debug.Log($"🕐 {gameObject.name} next call in {_beatsUntilNextCall:F1} beats (interval: {_currentInterval:F1})");
+        }
+
+        private void RandomizePersonality()
+        {
+            // Randomize note duration
+            NoteDuration[] durations = {NoteDuration.Whole, NoteDuration.Half, NoteDuration.Quarter, NoteDuration.Eighth, NoteDuration.Sixteenth};
+            noteDuration = durations[Random.Range(0, durations.Length)];
+            
+            // Randomize octave within musical range
+            octaveOffset = Random.Range(-2, 3); // -2 to +2 octaves
+            
+            // Slight variation in personality parameters
+            baseInterval = Random.Range(20f, 35f); // Very sparse when silent
+            pitchVariation = Random.Range(0.01f, 0.04f);
+            
+            // 🎵 The synthesizer handles its own musical voice setup automatically! 🎵
+            
+            Debug.Log($"🎭 {gameObject.name} personality: {noteDuration} notes, octave {octaveOffset:+0;-0;0}, intervals {baseInterval:F1}→{activeInterval:F1}");
+        }
+
         private void InitializeGillGlow()
         {
             if (gillSystem != null && gillSystem.gillMaterial != null)
             {
-                Debug.Log($"Original material: {gillSystem.gillMaterial.name}");
                 _uniqueGillMaterial = new Material(gillSystem.gillMaterial);
-                Debug.Log($"Created unique material: {_uniqueGillMaterial.name}");
                 gillSystem.gillMaterial = _uniqueGillMaterial;
+                Debug.Log($"🌟 {gameObject.name} gill glow system initialized");
             }
             else
             {
-                Debug.LogError($"Whale {gameObject.name}: GillSystem or gillMaterial is null!");
+                Debug.LogWarning($"⚠️ {gameObject.name}: GillSystem or gillMaterial is missing!");
             }
         }
-        
-        void InitializeMelodicCapabilities()
+
+        private void StartGillGlow(float frequency)
         {
-            if (_synthesizer != null)
-            {
-                originalCarrierFrequency = _synthesizer.CarrierFrequency;
-            }
-            
-            if (melodicVolumeEnvelope == null || melodicVolumeEnvelope.length == 0)
-            {
-                melodicVolumeEnvelope = CreateMelodicEnvelope();
-            }
-        }
-        
-        // 🎵 THE MAGIC METHOD - Make whale sing specific pitch!
-        public void TriggerMelodicCall(float targetFrequency)
-        {
-            if (!canSingMelodies || _synthesizer == null) 
-            {
-                TriggerChorusCall();
-                return;
-            }
-            
-            Debug.Log($"🎵 Whale {gameObject.name} singing: {targetFrequency:F1}Hz");
-            
-            isSingingMelody = true;
-            
-            float originalFreq = _synthesizer.CarrierFrequency;
-            AnimationCurve originalEnvelope = _synthesizer.VolumeEnvelope;
-            float originalModDepth = _synthesizer.ModulationDepth;
-            
-            float accuracyVariation = Random.Range(pitchAccuracy, 1f / pitchAccuracy);
-            float actualFrequency = targetFrequency * accuracyVariation;
-            
-            _synthesizer.CarrierFrequency = actualFrequency;
-            _synthesizer.VolumeEnvelope = melodicVolumeEnvelope;
-            _synthesizer.ModulationDepth *= 0.5f;
-            
-            _synthesizer.TriggerCall();
-            StartMelodicGillGlow(targetFrequency);
-            
-            _lastCallTime = Time.time;
-            _lastAnyWhaleCallTime = Time.time;
-            
-            StartCoroutine(RestoreNaturalVoice(originalFreq, originalEnvelope, originalModDepth, melodicCallDuration));
-        }
-        
-        IEnumerator RestoreNaturalVoice(float origFreq, AnimationCurve origEnv, float origMod, float wait)
-        {
-            yield return new WaitForSeconds(wait + 0.5f);
-            
-            if (_synthesizer != null)
-            {
-                _synthesizer.CarrierFrequency = origFreq;
-                _synthesizer.VolumeEnvelope = origEnv;
-                _synthesizer.ModulationDepth = origMod;
-            }
-            
-            isSingingMelody = false;
-            Debug.Log($"🐋 Whale {gameObject.name} returns to natural voice");
-        }
-        
-        void StartMelodicGillGlow(float sungFrequency)
-        {
-            float pitchDiff = Mathf.Log(sungFrequency / originalCarrierFrequency) / Mathf.Log(2f);
-            
-            Color melodicColor;
-            if (pitchDiff < -0.5f)
-                melodicColor = Color.Lerp(Color.blue, Color.cyan, (pitchDiff + 2f) / 1.5f);
-            else if (pitchDiff > 0.5f)
-                melodicColor = Color.Lerp(Color.yellow, Color.red, Mathf.Min(pitchDiff - 0.5f, 1f));
-            else
-                melodicColor = Color.Lerp(Color.green, Color.cyan, Mathf.Abs(pitchDiff) * 2f);
-            
             if (_currentGlowCoroutine != null)
                 StopCoroutine(_currentGlowCoroutine);
             
-            _currentGlowCoroutine = StartCoroutine(MelodicGlowEffect(melodicColor));
+            Color glowColor = GetColorFromFrequency(frequency);
+            _currentGlowCoroutine = StartCoroutine(GlowEffect(glowColor));
         }
-        
-        IEnumerator MelodicGlowEffect(Color targetColor)
+
+        private IEnumerator GlowEffect(Color targetColor)
         {
             float elapsed = 0f;
-            float glowDuration = melodicCallDuration;
+            float duration = _synthesizer?.CallDuration ?? 2f;
             
-            while (elapsed < glowDuration + 0.5f)
+            while (elapsed < duration + 0.5f)
             {
-                float progress = elapsed / glowDuration;
-                float pulse = Mathf.Sin(progress * Mathf.PI * 2f) * 0.3f + 0.7f;
-                _currentGlowIntensity = baseGlowIntensity * pulse * 1.5f;
+                float progress = elapsed / duration;
                 
+                // Create a pulsing glow that follows the call envelope
+                float intensity = Mathf.Sin(progress * Mathf.PI) * baseGlowIntensity;
+                
+                // Apply to gill system
                 if (gillSystem != null)
                 {
                     for (int i = 0; i < gillSystem.GetGillCount(); i++)
@@ -170,8 +380,8 @@ namespace Encounter.Runtime.Creatures
                         LineRenderer gill = gillSystem.GetGill(i);
                         if (gill != null && gill.material != null)
                         {
-                            gill.material.SetFloat(glowPropertyName, _currentGlowIntensity);
-                            gill.material.SetColor(Color1, targetColor * _currentGlowIntensity);
+                            gill.material.SetFloat(glowPropertyName, intensity);
+                            gill.material.SetColor("_Color", targetColor * intensity);
                         }
                     }
                 }
@@ -180,432 +390,67 @@ namespace Encounter.Runtime.Creatures
                 yield return null;
             }
             
-            _currentGlowIntensity = 0f;
-            _currentGlowCoroutine = null;
-        }
-        
-        AnimationCurve CreateMelodicEnvelope()
-        {
-            AnimationCurve curve = new AnimationCurve();
-            curve.AddKey(0f, 0f);
-            curve.AddKey(0.1f, 0.8f);
-            curve.AddKey(0.2f, 1f);
-            curve.AddKey(0.7f, 0.9f);
-            curve.AddKey(0.9f, 0.3f);
-            curve.AddKey(1f, 0f);
-            
-            for (int i = 0; i < curve.length; i++)
-                curve.SmoothTangents(i, 0.5f);
-            
-            return curve;
-        }
-    
-        public void PauseForChorus(float duration)
-        {
-            _isPausedForChorus = true;
-            _pauseEndTime = Time.time + duration;
-            Debug.Log($"Whale {gameObject.name} paused for chorus (duration: {duration:F1}s)");
-        }
-    
-        public void TriggerChorusCall()
-        {
-            if (isSingingMelody) return;
-            
-            Debug.Log($"🎵 Whale {gameObject.name} joins the chorus! 🎵");
-        
-            if (_synthesizer != null)
+            // Fade out
+            if (gillSystem != null)
             {
-                _synthesizer.TriggerCall();
-                _lastCallTime = Time.time;
-                _lastAnyWhaleCallTime = Time.time;
-                StartGillGlow();
-                _nextCallTime = Time.time + Random.Range(8f, 15f);
-            }
-        }
-    
-        public float GetLastCallTime() => _lastCallTime;
-
-        private Color GetNoteColor(float frequency)
-        {
-            if (!useNoteBasedColors) return Color.cyan;
-            
-            if (Mathf.Approximately(frequency, 110.00f)) return new Color(0.2f, 0.4f, 1f, 1f);
-            if (Mathf.Approximately(frequency, 123.47f)) return new Color(0.4f, 1f, 0.6f, 1f);
-            if (Mathf.Approximately(frequency, 164.81f)) return new Color(1f, 0.6f, 0.2f, 1f);
-            if (Mathf.Approximately(frequency, 220.00f)) return new Color(0.6f, 0.2f, 1f, 1f);
-            if (Mathf.Approximately(frequency, 246.94f)) return new Color(1f, 1f, 0.4f, 1f);
-            
-            return Color.cyan;
-        }
-
-        private void StartGillGlow()
-        {
-            if (_currentGlowCoroutine != null)
-                StopCoroutine(_currentGlowCoroutine);
-            
-            _currentGlowCoroutine = StartCoroutine(SynchronizedGlowEffect());
-        }
-
-        private IEnumerator SynchronizedGlowEffect()
-        {
-            float elapsed = 0f;
-            float callDuration = _synthesizer.CallDuration;
-        
-            while (elapsed < callDuration + 0.5f)
-            {
-                float callProgress = elapsed / callDuration;
-                float volumeLevel = 1f;
-                
-                if (_synthesizer.VolumeEnvelope != null)
-                    volumeLevel = _synthesizer.VolumeEnvelope.Evaluate(Mathf.Clamp01(callProgress));
-                
-                _currentGlowIntensity = volumeLevel * baseGlowIntensity;
-                
-                if (elapsed < 0.02f)
-                    _currentGlowIntensity *= elapsed / 0.02f;
-                else if (elapsed > callDuration + 0.4f)
-                    _currentGlowIntensity *= Mathf.Max(0f, 1f - ((elapsed - callDuration - 0.4f) / 0.1f));
-                
-                elapsed += Time.deltaTime;
-                yield return null;
-            }
-        
-            _currentGlowIntensity = 0f;
-            _currentGlowCoroutine = null;
-        }
-
-        private void UpdateGillGlow()
-        {
-            if (gillSystem == null) return;
-        
-            for (int i = 0; i < gillSystem.GetGillCount(); i++)
-            {
-                LineRenderer gill = gillSystem.GetGill(i);
-                if (gill != null && gill.material != null)
+                for (int i = 0; i < gillSystem.GetGillCount(); i++)
                 {
-                    gill.material.SetFloat(glowPropertyName, _currentGlowIntensity);
-                    
-                    if (useNoteBasedColors && _currentGlowIntensity > 0f)
+                    LineRenderer gill = gillSystem.GetGill(i);
+                    if (gill != null && gill.material != null)
                     {
-                        Color finalColor = _whaleNoteColor * Mathf.Min(_currentGlowIntensity, 1f);
-                        gill.material.SetColor(Color1, finalColor);
+                        gill.material.SetFloat(glowPropertyName, 0f);
                     }
                 }
             }
+            
+            _currentGlowCoroutine = null;
         }
 
-        private void Start()
+        private Color GetColorFromFrequency(float frequency)
         {
-            _synthesizer = GetComponent<WhaleCallSynthesizer>();
-            InitializeGillGlow();
-            InitializeMelodicCapabilities();
-            RandomizePersonality();
-            ScheduleNextCall();
-            _nextCallTime += Random.Range(0f, 5f);
+            // Map frequency to hue - lower frequencies are warmer (red/orange), higher are cooler (blue/purple)
+            float normalizedFreq = Mathf.InverseLerp(80f, 800f, frequency);
+            float hue = Mathf.Lerp(0f, 0.7f, normalizedFreq); // Red to blue spectrum
+            
+            return Color.HSVToRGB(hue, 0.8f, 1f);
         }
 
-        private void Update()
-        {
-            if (_isPausedForChorus)
-            {
-                if (Time.time >= _pauseEndTime)
-                {
-                    _isPausedForChorus = false;
-                    Debug.Log($"Whale {gameObject.name} resume from chorus pause");
-                }
-                else
-                {
-                    UpdateGillGlow();
-                    return;
-                }
-            }
-            
-            if (Time.time >= _nextCallTime)
-                TryToCall();
-            
-            CheckForNearbyCallsToRespondTo();
-            UpdateGillGlow();
-            
-            if (_activeCalls > 10)
-            {
-                Debug.LogWarning("Resetting stuck activeCalls counter!");
-                _activeCalls = 0;
-            }
-            
-            if (Time.time % 10f < Time.deltaTime)
-                Debug.Log($"Pod Status: Active calls: {_activeCalls}, Last call: {Time.time - _lastAnyWhaleCallTime:F1}s ago");
-        }
-
-        private void TryToCall()
-        {
-            string debugReason;
-            
-            if (Time.time - _lastAnyWhaleCallTime < PodQuietPeriod)
-            {
-                debugReason = $"Pod quiet period (last call {Time.time - _lastAnyWhaleCallTime:F1}s ago)";
-                _nextCallTime = Time.time + Random.Range(0.5f, 2f);
-                if (Random.value < 0.1f) Debug.Log($"Whale {gameObject.name}: {debugReason}");
-                return;
-            }
-            
-            if (_activeCalls >= 2)
-            {
-                debugReason = $"Too many active calls ({_activeCalls})";
-                _nextCallTime = Time.time + Random.Range(1f, 3f);
-                if (Random.value < 0.1f) Debug.Log($"Whale {gameObject.name}: {debugReason}");
-                return;
-            }
-            
-            if (_activeCalls > 0 && Random.value < shyness)
-            {
-                debugReason = $"Being shy (shyness={shyness:F2}, activeCalls={_activeCalls})";
-                _nextCallTime = Time.time + Random.Range(2f, 5f);
-                if (Random.value < 0.1f) Debug.Log($"Whale {gameObject.name}: {debugReason}");
-                return;
-            }
-            
-            MakeCall();
-        }
-
-        private void MakeCall()
-        {
-            if (_synthesizer != null)
-            {
-                _synthesizer.TriggerCall();
-                _lastCallTime = Time.time;
-                _lastAnyWhaleCallTime = Time.time;
-                _activeCalls++;
-                ScheduleNextCall();
-                StartGillGlow();
-                StartCoroutine(TrackCallDuration());
-                Debug.Log($"Whale {gameObject.name} calls out! Active calls: {_activeCalls}");
-            }
-        }
-
-        private IEnumerator TrackCallDuration()
-        {
-            yield return new WaitForSeconds(_synthesizer.CallDuration + 0.5f);
-            _activeCalls = Mathf.Max(0, _activeCalls - 1);
-            Debug.Log($"Whale {gameObject.name} finished calling. Active calls now: {_activeCalls}");
-        }
-
-        private void ScheduleNextCall()
-        {
-            float baseInterval = Random.Range(minCallInterval, maxCallInterval);
-            float personalityModifier = 1f / chattiness;
-            _nextCallTime = Time.time + (baseInterval * personalityModifier);
-        }
-
-        private void CheckForNearbyCallsToRespondTo()
-        {
-            if (Time.time % 0.5f < Time.deltaTime)
-            {
-                WhaleCallBehavior[] otherWhales = FindObjectsByType<WhaleCallBehavior>(FindObjectsSortMode.None);
-                
-                foreach (var otherWhale in otherWhales)
-                {
-                    if (otherWhale == this) continue;
-                    
-                    float distance = Vector3.Distance(transform.position, otherWhale.transform.position);
-                    
-                    if (distance <= listenRange && 
-                        Time.time - otherWhale._lastCallTime < 3f &&
-                        Time.time - otherWhale._lastCallTime > 0.5f &&
-                        Time.time - _lastCallTime > 5f)
-                    {
-                        if (Random.value < responseChance)
-                        {
-                            _nextCallTime = Time.time + Random.Range(1f, 4f);
-                            Debug.Log($"Whale {gameObject.name} decides to respond to {otherWhale.gameObject.name}");
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        private void RandomizePersonality()
-        {
-            chattiness = Random.Range(0.7f, 1.5f);
-            shyness = Random.Range(0f, 0.8f);
-            responseChance = Random.Range(0.1f, 0.5f);
-            
-            if (_synthesizer != null)
-            {
-                RandomizeVoiceParameters();
-                CreateUniqueAnimationCurves();
-            }
-        }
-
-        private void RandomizeVoiceParameters()
-        {
-            float[] aminorSus2Notes = {
-                110.00f, 123.47f, 164.81f, 220.00f, 246.94f
-            };
-            
-            _synthesizer.CarrierFrequency = aminorSus2Notes[Random.Range(0, aminorSus2Notes.Length)];
-            _synthesizer.ModulatorFrequency = Random.Range(35f, 70f);
-            _synthesizer.ModulationDepth = Random.Range(80f, 140f);
-            _synthesizer.DriftAmount = Random.Range(0.015f, 0.035f);
-            _synthesizer.BreathingRate = Random.Range(0.3f, 0.6f);
-            
-            string noteName = GetNoteName(_synthesizer.CarrierFrequency);
-            _whaleNoteColor = GetNoteColor(_synthesizer.CarrierFrequency);
-            
-            Debug.Log($"Whale {gameObject.name} voice: {noteName} ({_synthesizer.CarrierFrequency:F1}Hz)");
-        }
-        
         private string GetNoteName(float frequency)
         {
-            if (Mathf.Approximately(frequency, 110.00f)) return "A2";
-            if (Mathf.Approximately(frequency, 123.47f)) return "B2";
-            if (Mathf.Approximately(frequency, 164.81f)) return "E3";
-            if (Mathf.Approximately(frequency, 220.00f)) return "A3";
-            if (Mathf.Approximately(frequency, 246.94f)) return "B3";
-            return $"{frequency:F1}Hz";
+            // Simple note name approximation
+            float c4 = 261.63f;
+            float ratio = frequency / c4;
+            float semitones = 12f * Mathf.Log(ratio) / Mathf.Log(2f);
+            
+            string[] noteNames = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+            int noteIndex = Mathf.RoundToInt(semitones) % 12;
+            if (noteIndex < 0) noteIndex += 12;
+            
+            int octave = 4 + Mathf.FloorToInt(semitones / 12f);
+            
+            return $"{noteNames[noteIndex]}{octave}";
         }
 
-        private void CreateUniqueAnimationCurves()
-        {
-            _synthesizer.VolumeEnvelope = CreateRandomVolumeEnvelope();
-            _synthesizer.ModulationEnvelope = CreateRandomModulationEnvelope();
-            _synthesizer.OrganicCurve = CreateRandomOrganicCurve();
-        }
-
-        private AnimationCurve CreateRandomVolumeEnvelope()
-        {
-            AnimationCurve curve = new AnimationCurve();
-            curve.AddKey(0f, 0f);
-            
-            float attackTime = Random.Range(0.05f, 0.3f);
-            float attackLevel = Random.Range(0.7f, 1f);
-            curve.AddKey(attackTime, attackLevel);
-            
-            if (Random.value > 0.3f)
-            {
-                float sustainTime = Random.Range(0.4f, 0.8f);
-                float sustainLevel = Random.Range(0.6f, 1f);
-                curve.AddKey(sustainTime, sustainLevel);
-            }
-            
-            float releaseStart = Random.Range(0.75f, 0.95f);
-            float releaseLevel = Random.Range(0.1f, 0.5f);
-            curve.AddKey(releaseStart, releaseLevel);
-            curve.AddKey(1f, 0f);
-            
-            for (int i = 0; i < curve.length; i++)
-                curve.SmoothTangents(i, 0.3f);
-            
-            return curve;
-        }
-
-        private AnimationCurve CreateRandomModulationEnvelope()
-        {
-            AnimationCurve curve = new AnimationCurve();
-            float startMod = Random.Range(0f, 0.4f);
-            curve.AddKey(0f, startMod);
-            
-            int numPoints = Random.Range(2, 5);
-            for (int i = 0; i < numPoints; i++)
-            {
-                float time = (float)(i + 1) / (numPoints + 1);
-                float intensity = Random.Range(0.1f, 1f);
-                curve.AddKey(time, intensity);
-            }
-            
-            float endMod = Random.Range(0.2f, 0.8f);
-            curve.AddKey(1f, endMod);
-            
-            for (int i = 0; i < curve.length; i++)
-                curve.SmoothTangents(i, 0.2f);
-            
-            return curve;
-        }
-
-        private AnimationCurve CreateRandomOrganicCurve()
-        {
-            AnimationCurve curve = new AnimationCurve();
-            float expressiveness = Random.Range(0.3f, 1.5f);
-            
-            curve.AddKey(0f, Random.Range(-0.5f, 0.5f) * expressiveness);
-            
-            int variations = Random.Range(1, 4);
-            for (int i = 0; i < variations; i++)
-            {
-                float time = Random.Range(0.2f, 0.8f);
-                float variation = Random.Range(-1f, 1f) * expressiveness;
-                curve.AddKey(time, variation);
-            }
-            
-            curve.AddKey(1f, Random.Range(-0.5f, 0.5f) * expressiveness);
-            
-            for (int i = 0; i < curve.length; i++)
-                curve.SmoothTangents(i, 0.5f);
-            
-            return curve;
-        }
-
-        private void OnDestroy()
-        {
-            if (_activeCalls > 0)
-                _activeCalls--;
-        }
-        
+        // Debug visualization
         private void OnDrawGizmosSelected()
         {
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawWireSphere(transform.position, listenRange);
-            
-            if (_activeCalls > 0)
+            // Show continuous mode state
+            if (_isContinuousMode)
             {
-                Gizmos.color = Color.red;
-                Gizmos.DrawSphere(transform.position + Vector3.up * 2, 1f);
+                Gizmos.color = Color.green;
+                Gizmos.DrawSphere(transform.position + Vector3.up * 3f, 1f);
             }
             
-            if (isSingingMelody)
-            {
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawSphere(transform.position + Vector3.up * 4, 1.5f);
-            }
-        }
-        
-        [ContextMenu("Whale Song Preset")]
-        private void SetWhalePreset()
-        {
-            if (_synthesizer != null)
-            {
-                _synthesizer.CarrierFrequency = 180f;
-                _synthesizer.ModulatorFrequency = 45f;
-                _synthesizer.ModulationDepth = 120f;
-                _synthesizer.DriftAmount = 0.03f;
-                _synthesizer.BreathingRate = 0.3f;
-            }
-        }
-    
-        [ContextMenu("Bell-like Preset")]
-        private void SetBellPreset()
-        {
-            if (_synthesizer != null)
-            {
-                _synthesizer.CarrierFrequency = 440f;
-                _synthesizer.ModulatorFrequency = 880f;
-                _synthesizer.ModulationDepth = 200f;
-                _synthesizer.DriftAmount = 0.01f;
-                _synthesizer.BreathingRate = 0.1f;
-            }
-        }
-    
-        [ContextMenu("Growling Bass Preset")]
-        private void SetBassPreset()
-        {
-            if (_synthesizer != null)
-            {
-                _synthesizer.CarrierFrequency = 80f;
-                _synthesizer.ModulatorFrequency = 25f;
-                _synthesizer.ModulationDepth = 60f;
-                _synthesizer.DriftAmount = 0.05f;
-                _synthesizer.BreathingRate = 0.8f;
-            }
+            // Show timing state
+            Gizmos.color = _beatsUntilNextCall <= 1f ? Color.yellow : Color.blue;
+            Gizmos.DrawSphere(transform.position + Vector3.up * 2f, 0.5f);
+            
+            // Show note duration
+            Gizmos.color = Color.white;
+            float gizmoSize = (float)noteDuration * 0.2f;
+            if (noteDuration == NoteDuration.Eighth) gizmoSize = 0.1f;
+            if (noteDuration == NoteDuration.Sixteenth) gizmoSize = 0.05f;
+            Gizmos.DrawWireSphere(transform.position, gizmoSize + 1f);
         }
     }
 }

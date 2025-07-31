@@ -12,18 +12,30 @@ namespace Encounter.Runtime.Creatures
         // Public property so other scripts can access call duration
         public float CallDuration => callDuration;
     
-        [Header("Modulator Wave (The Voice Shaper)")]
+        [Header("🎵 Musical FM Voice Settings")]
+        [SerializeField] private MusicalVoiceType voiceType = MusicalVoiceType.Random;
+        [SerializeField] private bool randomizeOnStart = true;
+        
+        [Header("Advanced FM Parameters (Auto-set by Voice Type)")]
         [SerializeField] private float modulatorFrequency = 80f;
-        [SerializeField] private float modulationDepth = 100f; // How much the modulator affects the carrier
+        [SerializeField] private float modulationDepth = 100f;
         [SerializeField] private AnimationCurve modulationEnvelope = AnimationCurve.EaseInOut(0, 0.2f, 1, 1);
     
         [Header("Organic Variation")]
-        [SerializeField] private float driftAmount = 0.02f; // Natural pitch drift
-        [SerializeField] private float breathingRate = 0.5f; // Slow modulation like breathing
+        [SerializeField] private float driftAmount = 0.02f;
+        [SerializeField] private float breathingRate = 0.5f;
         [SerializeField] private AnimationCurve organicCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
     
-        // Expose these publicly so WhaleCallBehavior can randomize them
-        public float CarrierFrequency { get => carrierFrequency; set => carrierFrequency = value; }
+        // Expose these publicly so WhaleCallBehavior can set frequency
+        public float CarrierFrequency { 
+            get => carrierFrequency; 
+            set { 
+                carrierFrequency = value;
+                UpdateModulatorForMusicalRatio(); // Keep musical ratios when frequency changes!
+            } 
+        }
+        
+        // Keep other properties for backward compatibility
         public float ModulatorFrequency { get => modulatorFrequency; set => modulatorFrequency = value; }
         public float ModulationDepth { get => modulationDepth; set => modulationDepth = value; }
         public float DriftAmount { get => driftAmount; set => driftAmount = value; }
@@ -32,44 +44,209 @@ namespace Encounter.Runtime.Creatures
         public AnimationCurve ModulationEnvelope { get => modulationEnvelope; set => modulationEnvelope = value; }
         public AnimationCurve OrganicCurve { get => organicCurve; set => organicCurve = value; }
     
+        // Musical voice system
+        private MusicalVoicePreset currentVoicePreset;
+        private float baseModulatorRatio;
+        
         private float _sampleRate;
         private float _carrierPhase;
         private float _modulatorPhase;
-        private float _organicPhase; // For the slow breathing-like modulation
+        private float _organicPhase;
         private bool _isPlaying;
         private int _sampleIndex;
     
         // Anti-pop protection
         private bool _isFadingOut;
         private bool _isFadingIn;
-        private const float FadeInDuration = 0.02f; // 20ms fade in (shorter than fade out)
-        private const float FadeOutDuration = 0.05f; // 50ms fade out
+        private const float FadeInDuration = 0.02f;
+        private const float FadeOutDuration = 0.05f;
         private int _fadeInSamples;
         private int _fadeOutSamples;
         private int _fadeInCounter;
         private int _fadeOutCounter;
-    
+
         private void Start()
         {
             _sampleRate = AudioSettings.outputSampleRate;
             _fadeInSamples = Mathf.RoundToInt(FadeInDuration * _sampleRate);
             _fadeOutSamples = Mathf.RoundToInt(FadeOutDuration * _sampleRate);
+            
+            // Setup musical voice
+            if (randomizeOnStart)
+            {
+                SetupRandomMusicalVoice();
+            }
+            else
+            {
+                SetupMusicalVoice(voiceType);
+            }
+            
             GetComponent<AudioSource>().Play();
         }
-    
+
+        public void SetupRandomMusicalVoice()
+        {
+            // Pick a random voice type (excluding Random)
+            MusicalVoiceType[] types = {
+                MusicalVoiceType.Flute, MusicalVoiceType.Bell, MusicalVoiceType.Brass,
+                MusicalVoiceType.Ethereal, MusicalVoiceType.Woody, MusicalVoiceType.Crystal,
+                MusicalVoiceType.Oceanic
+            };
+            
+            MusicalVoiceType randomType = types[Random.Range(0, types.Length)];
+            SetupMusicalVoice(randomType);
+        }
+
+        public void SetupMusicalVoice(MusicalVoiceType type)
+        {
+            currentVoicePreset = GetVoicePreset(type);
+            
+            // Apply the musical preset
+            baseModulatorRatio = currentVoicePreset.modulatorRatio;
+            modulationDepth = currentVoicePreset.baseModDepth * Random.Range(0.8f, 1.2f);
+            driftAmount = currentVoicePreset.driftAmount * Random.Range(0.7f, 1.3f);
+            breathingRate = currentVoicePreset.breathingRate * Random.Range(0.8f, 1.2f);
+            
+            // Update modulator frequency based on current carrier
+            UpdateModulatorForMusicalRatio();
+            
+            // Create musical envelopes
+            CreateMusicalEnvelopes(currentVoicePreset);
+            
+            Debug.Log($"🎵 {gameObject.name} voice: {currentVoicePreset.name} (ratio: {baseModulatorRatio:F2}, depth: {modulationDepth:F1})");
+        }
+
+        private void UpdateModulatorForMusicalRatio()
+        {
+            if (currentVoicePreset != null)
+            {
+                // Keep musical relationship between carrier and modulator
+                modulatorFrequency = carrierFrequency * baseModulatorRatio;
+            }
+        }
+
+        private MusicalVoicePreset GetVoicePreset(MusicalVoiceType type)
+        {
+            switch (type)
+            {
+                case MusicalVoiceType.Flute:
+                    return new MusicalVoicePreset("Flute", 1f, 30f, 0.01f, 0.2f);
+                    
+                case MusicalVoiceType.Bell:
+                    return new MusicalVoicePreset("Bell", 2f, 80f, 0.005f, 0.1f);
+                    
+                case MusicalVoiceType.Brass:
+                    return new MusicalVoicePreset("Brass", 1.5f, 60f, 0.02f, 0.3f);
+                    
+                case MusicalVoiceType.Ethereal:
+                    return new MusicalVoicePreset("Ethereal", 0.5f, 20f, 0.015f, 0.25f);
+                    
+                case MusicalVoiceType.Woody:
+                    return new MusicalVoicePreset("Woody", 1.33f, 45f, 0.025f, 0.4f);
+                    
+                case MusicalVoiceType.Crystal:
+                    return new MusicalVoicePreset("Crystal", 3f, 25f, 0.008f, 0.15f);
+                    
+                case MusicalVoiceType.Oceanic:
+                    return new MusicalVoicePreset("Oceanic", 0.75f, 70f, 0.03f, 0.6f);
+                    
+                default:
+                    return new MusicalVoicePreset("Default", 1f, 50f, 0.02f, 0.3f);
+            }
+        }
+
+        private void CreateMusicalEnvelopes(MusicalVoicePreset preset)
+        {
+            // Volume envelope - different shapes for different instruments
+            AnimationCurve volumeCurve = new AnimationCurve();
+            
+            switch (preset.name)
+            {
+                case "Bell":
+                    // Sharp attack, long decay like a bell
+                    volumeCurve.AddKey(0f, 0f);
+                    volumeCurve.AddKey(0.02f, 1f);
+                    volumeCurve.AddKey(0.3f, 0.6f);
+                    volumeCurve.AddKey(1f, 0f);
+                    break;
+                    
+                case "Flute":
+                    // Smooth attack and release
+                    volumeCurve.AddKey(0f, 0f);
+                    volumeCurve.AddKey(0.1f, 0.8f);
+                    volumeCurve.AddKey(0.8f, 0.7f);
+                    volumeCurve.AddKey(1f, 0f);
+                    break;
+                    
+                case "Brass":
+                    // Strong attack, sustained body
+                    volumeCurve.AddKey(0f, 0f);
+                    volumeCurve.AddKey(0.05f, 1f);
+                    volumeCurve.AddKey(0.7f, 0.9f);
+                    volumeCurve.AddKey(1f, 0f);
+                    break;
+                    
+                case "Crystal":
+                    // Very pure, sustained tone
+                    volumeCurve.AddKey(0f, 0f);
+                    volumeCurve.AddKey(0.08f, 1f);
+                    volumeCurve.AddKey(0.9f, 0.95f);
+                    volumeCurve.AddKey(1f, 0f);
+                    break;
+                    
+                default:
+                    // Default smooth envelope
+                    volumeCurve.AddKey(0f, 0f);
+                    volumeCurve.AddKey(0.1f, 1f);
+                    volumeCurve.AddKey(0.9f, 0.8f);
+                    volumeCurve.AddKey(1f, 0f);
+                    break;
+            }
+            
+            // Smooth all keyframes
+            for (int i = 0; i < volumeCurve.length; i++)
+                volumeCurve.SmoothTangents(i, 0.3f);
+            
+            volumeEnvelope = volumeCurve;
+            
+            // Modulation envelope - controls how the FM effect changes over time
+            AnimationCurve modCurve = new AnimationCurve();
+            modCurve.AddKey(0f, 0.2f);
+            modCurve.AddKey(0.3f, 1f);
+            modCurve.AddKey(0.8f, 0.6f);
+            modCurve.AddKey(1f, 0.3f);
+            
+            for (int i = 0; i < modCurve.length; i++)
+                modCurve.SmoothTangents(i, 0.3f);
+                
+            modulationEnvelope = modCurve;
+            
+            // Organic curve for natural pitch variation
+            AnimationCurve organicCurveNew = new AnimationCurve();
+            organicCurveNew.AddKey(0f, Random.Range(-0.5f, 0.5f));
+            organicCurveNew.AddKey(0.3f, Random.Range(-0.8f, 0.8f));
+            organicCurveNew.AddKey(0.7f, Random.Range(-0.6f, 0.6f));
+            organicCurveNew.AddKey(1f, Random.Range(-0.3f, 0.3f));
+            
+            for (int i = 0; i < organicCurveNew.length; i++)
+                organicCurveNew.SmoothTangents(i, 0.5f);
+                
+            organicCurve = organicCurveNew;
+        }
+
         public void TriggerCall()
         {
             _isPlaying = true;
             _isFadingOut = false;
-            _isFadingIn = true;   // Start with fade in
+            _isFadingIn = true;
             _fadeInCounter = 0;
             _fadeOutCounter = 0;
             _sampleIndex = 0;
             _carrierPhase = 0f;
             _modulatorPhase = 0f;
-            _organicPhase = Random.Range(0f, 1f); // Start at random point for variation
+            _organicPhase = Random.Range(0f, 1f);
         }
-    
+
         private void OnAudioFilterRead(float[] data, int channels)
         {
             if (!_isPlaying && !_isFadingOut) 
@@ -98,7 +275,6 @@ namespace Encounter.Runtime.Creatures
                 {
                     if (_fadeOutCounter >= _fadeOutSamples)
                     {
-                        // Fade out complete, stop playing
                         _isPlaying = false;
                         _isFadingOut = false;
                         for (int j = i; j < data.Length; j++)
@@ -110,51 +286,45 @@ namespace Encounter.Runtime.Creatures
                 }
             
                 // === THE ORGANIC LAYER ===
-                // Slow breathing-like variation that evolves over time
                 float organicModulation = organicCurve.Evaluate(callProgress) * 
                                           Mathf.Sin(_organicPhase * 2f * Mathf.PI) * driftAmount;
             
                 // === THE MODULATOR WAVE ===
-                // This wave will distort our main carrier frequency
                 float modEnvelope = modulationEnvelope.Evaluate(callProgress);
                 float modulatorSample = Mathf.Sin(_modulatorPhase * 2f * Mathf.PI);
             
-                // The modulator creates frequency deviation - this is the FM magic!
+                // The modulator creates frequency deviation
                 float frequencyDeviation = modulatorSample * modulationDepth * modEnvelope;
             
                 // === THE CARRIER WAVE ===
-                // Our main frequency, but now it's being pushed around by the modulator
                 float currentCarrierFreq = carrierFrequency + frequencyDeviation + 
                                            (organicModulation * carrierFrequency);
             
-                // Generate the main carrier wave (what we actually hear)
                 float carrierSample = Mathf.Sin(_carrierPhase * 2f * Mathf.PI);
             
                 // Apply volume envelope
                 float volume = volumeEnvelope.Evaluate(Mathf.Clamp01(callProgress));
             
-                // Apply fade IN if we're in that phase
+                // Apply fade IN
                 if (_isFadingIn)
                 {
                     if (_fadeInCounter >= _fadeInSamples)
                     {
-                        _isFadingIn = false; // Fade in complete
+                        _isFadingIn = false;
                     }
                     else
                     {
                         float fadeInProgress = (float)_fadeInCounter / _fadeInSamples;
-                        float fadeInMultiplier = fadeInProgress; // Linear fade from 0 to 1
-                        volume *= fadeInMultiplier;
+                        volume *= fadeInProgress;
                         _fadeInCounter++;
                     }
                 }
             
-                // Apply fade OUT if we're in that phase
+                // Apply fade OUT
                 if (_isFadingOut)
                 {
                     if (_fadeOutCounter >= _fadeOutSamples)
                     {
-                        // Fade out complete, stop playing
                         _isPlaying = false;
                         _isFadingOut = false;
                         for (int j = i; j < data.Length; j++)
@@ -166,8 +336,7 @@ namespace Encounter.Runtime.Creatures
                     else
                     {
                         float fadeOutProgress = (float)_fadeOutCounter / _fadeOutSamples;
-                        float fadeOutMultiplier = 1f - fadeOutProgress; // Linear fade from 1 to 0
-                        volume *= fadeOutMultiplier;
+                        volume *= (1f - fadeOutProgress);
                         _fadeOutCounter++;
                     }
                 }
@@ -180,52 +349,76 @@ namespace Encounter.Runtime.Creatures
                     data[i + channel] = finalSample;
                 }
             
-                // === ADVANCE ALL OUR PHASES ===
-                // Carrier phase advances based on the FM-modulated frequency
+                // === ADVANCE ALL PHASES ===
                 _carrierPhase += currentCarrierFreq / _sampleRate;
                 if (_carrierPhase > 1f) _carrierPhase -= 1f;
             
-                // Modulator phase advances at its own rate
                 _modulatorPhase += modulatorFrequency / _sampleRate;
                 if (_modulatorPhase > 1f) _modulatorPhase -= 1f;
             
-                // Organic phase advances very slowly for breathing effect
                 _organicPhase += breathingRate / _sampleRate;
                 if (_organicPhase > 1f) _organicPhase -= 1f;
             
                 _sampleIndex++;
             }
         }
-    
-        // Helper method to create different organic presets
-        [ContextMenu("Whale Song Preset")]
-        private void SetWhalePreset()
+
+        // Context menu methods for testing different voices
+        [ContextMenu("🪈 Set Flute Voice")]
+        private void SetFluteVoice() => SetupMusicalVoice(MusicalVoiceType.Flute);
+        
+        [ContextMenu("🔔 Set Bell Voice")]
+        private void SetBellVoice() => SetupMusicalVoice(MusicalVoiceType.Bell);
+        
+        [ContextMenu("🎺 Set Brass Voice")]
+        private void SetBrassVoice() => SetupMusicalVoice(MusicalVoiceType.Brass);
+        
+        [ContextMenu("✨ Set Ethereal Voice")]
+        private void SetEtherealVoice() => SetupMusicalVoice(MusicalVoiceType.Ethereal);
+        
+        [ContextMenu("🌳 Set Woody Voice")]
+        private void SetWoodyVoice() => SetupMusicalVoice(MusicalVoiceType.Woody);
+        
+        [ContextMenu("💎 Set Crystal Voice")]
+        private void SetCrystalVoice() => SetupMusicalVoice(MusicalVoiceType.Crystal);
+        
+        [ContextMenu("🌊 Set Oceanic Voice")]
+        private void SetOceanicVoice() => SetupMusicalVoice(MusicalVoiceType.Oceanic);
+        
+        [ContextMenu("🎲 Randomize Voice")]
+        private void RandomizeVoice() => SetupRandomMusicalVoice();
+    }
+
+    // 🎵 Musical Voice Types
+    public enum MusicalVoiceType
+    {
+        Random,
+        Flute,      // 🪈 Pure, breathy
+        Bell,       // 🔔 Sharp attack, harmonic decay
+        Brass,      // 🎺 Bold, sustained
+        Ethereal,   // ✨ Shimmery, otherworldly
+        Woody,      // 🌳 Like wooden wind instruments
+        Crystal,    // 💎 Pure, high harmonics
+        Oceanic     // 🌊 Deep, whale-like
+    }
+
+    // 🎼 Musical Voice Preset Data
+    [System.Serializable]
+    public class MusicalVoicePreset
+    {
+        public string name;
+        public float modulatorRatio;     // Musical ratio to carrier frequency
+        public float baseModDepth;       // Constrained modulation depth
+        public float driftAmount;        // Natural pitch variation
+        public float breathingRate;      // Slow organic modulation
+        
+        public MusicalVoicePreset(string n, float modRatio, float modDepth, float drift, float breathing)
         {
-            carrierFrequency = 180f;
-            modulatorFrequency = 45f;
-            modulationDepth = 120f;
-            driftAmount = 0.03f;
-            breathingRate = 0.3f;
-        }
-    
-        [ContextMenu("Bell-like Preset")]
-        private void SetBellPreset()
-        {
-            carrierFrequency = 440f;
-            modulatorFrequency = 880f;
-            modulationDepth = 200f;
-            driftAmount = 0.01f;
-            breathingRate = 0.1f;
-        }
-    
-        [ContextMenu("Growling Bass Preset")]
-        private void SetBassPreset()
-        {
-            carrierFrequency = 80f;
-            modulatorFrequency = 25f;
-            modulationDepth = 60f;
-            driftAmount = 0.05f;
-            breathingRate = 0.8f;
+            name = n;
+            modulatorRatio = modRatio;
+            baseModDepth = modDepth;
+            driftAmount = drift;
+            breathingRate = breathing;
         }
     }
 }

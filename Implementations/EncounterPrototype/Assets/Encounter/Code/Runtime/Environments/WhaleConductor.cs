@@ -8,77 +8,74 @@ namespace Encounter.Runtime.Environments
 {
     public class WhaleConductor : MonoBehaviour
     {
-        [Header("Microphone Settings")]
-        [SerializeField] private float volumeThreshold = 0.02f;    // How loud the mic needs to be
-        [SerializeField] private float sustainedTime = 2f;        // How long to sustain (2 seconds)
-        [SerializeField] private int sampleRate = 44100;          // Audio sample rate
-        [SerializeField] private float updateRate = 0.1f;         // How often to check mic (10 times per second)
-    
-        [Header("Frequency-Based Detection")]
-        [SerializeField] private float noiseThreshold = 0.15f;           // How "noisy" the sound needs to be (human voice has noise)
-        [SerializeField] private float fundamentalFreqMin = 80f;         // Human voice fundamental range
-        [SerializeField] private float fundamentalFreqMax = 400f;        // Human voice fundamental range
-        [SerializeField] private int analysisWindowSize = 512;           // Smaller window for faster response
-        [SerializeField] private bool showFrequencyDebug = true;         // Show detailed frequency analysis
+        [Header("🎵 Musical Settings")]
+        [SerializeField] private float bpm = 80f;
+        [SerializeField] private MusicalNote[] melody = {
+            new MusicalNote(NoteName.C, 4),
+            new MusicalNote(NoteName.E, 4), 
+            new MusicalNote(NoteName.G, 4),
+            new MusicalNote(NoteName.C, 4)
+        }; // C4-E4-G4-C4 by default
         
-        [Header("🎵 MELODIC LOCK SETTINGS! 🎵")]
-        [SerializeField] private bool useMelodicLock = true;             // Toggle between sustained note and melody modes
-        [SerializeField] private float[] targetIntervals = { 0, 4, 0 };  // C -> D (perfect 3rd) -> C
-        [SerializeField] private float intervalTolerance = 2f;         // How many semitones off we allow (1.5 = pretty forgiving!)
-        [SerializeField] private float noteHoldTime = 0.1f;              // How long they need to hold each note
-        [SerializeField] private float maxPauseBetweenNotes = 10.0f;      // Reset if they pause too long
-        [SerializeField] private int pitchSmoothingFrames = 5;           // How many frames we average for stable pitch
-    
-        [Header("Whale Response")]
-        [SerializeField] private float pauseDuration = 1f;        // How long whales pause before responding
-        [SerializeField] private float chorusSpread = 0.3f;       // Random delay between whale responses (0-0.3s)
-        [SerializeField] private bool debugMicrophone = true;     // Show mic levels in console
-    
+        // Convert musical notes to frequencies for the jellies
+        public float[] Melody 
+        { 
+            get 
+            {
+                float[] frequencies = new float[melody.Length];
+                for (int i = 0; i < melody.Length; i++)
+                {
+                    frequencies[i] = melody[i].ToFrequency();
+                }
+                return frequencies;
+            } 
+        }
+        
+        [Header("🎤 Voice Detection")]
+        [SerializeField] private float volumeThreshold = 0.015f; // Lower threshold (was 0.02)
+        [SerializeField] private float fundamentalFreqMin = 60f;  // Lower range (was 80)
+        [SerializeField] private float fundamentalFreqMax = 500f; // Higher range (was 400)
+        [SerializeField] private float noiseThreshold = 0.1f;     // Lower threshold (was 0.15)
+        [SerializeField] private int analysisWindowSize = 512;
+        [SerializeField] private bool debugMicrophone = true;
+        
+        [Header("🎛️ Audio Settings")]
+        [SerializeField] private int sampleRate = 44100;
+        [SerializeField] private float updateRate = 0.1f;
+        
+        // Private variables
         private AudioClip _microphoneClip;
         private string _microphoneName;
         private bool _isListening;
-        private float _sustainStartTime = -1f;
-        private bool _hasTriggeredChorus;
         private float _lastVolumeCheck;
-    
-        // Frequency analysis
         private float[] _analysisBuffer;
-        private float[] _previousBuffer;
-    
-        // Whale management
-        private WhaleCallBehavior[] _allWhales;
-        private bool _chorusActive;
         
-        // ✨ NEW MELODIC DETECTION STUFF! ✨
-        private Queue<float> recentPitches = new Queue<float>();     // Rolling average of recent pitches
-        private float currentStablePitch = 0f;                        // Our current "agreed upon" pitch
-        private float basePitch = 0f;                                 // First note of the melody
-        private List<float> detectedIntervals = new List<float>();    // Intervals we've detected so far
-        private float currentNoteStartTime = -1f;                     // When did we start singing this note?
-        private float lastNoteTime = 0f;                              // When did we last detect a note?
-        private bool isCurrentlyVoicing = false;                      // Are we making sound right now?
+        // Musical timing
+        private int _currentBeat = 0;
+        private int _currentMelodyIndex = 0;
+        private bool _isPlayerSinging = false;
+        
+        // Jelly management
+        private WhaleCallBehavior[] _allJellies;
+        
+        // Events for jellies to subscribe to
+        public static System.Action<int, float, bool> OnBeat; // beatNumber, currentNote, isPlayerSinging
 
         private void Start()
         {
-            // Find all whales in the scene
-            RefreshWhaleList();
-        
-            // Initialize frequency analysis
-            _analysisBuffer = new float[analysisWindowSize];
-            _previousBuffer = new float[analysisWindowSize];
-        
-            // Initialize microphone
-            InitializeMicrophone();
-        
-            // Let's get EXCITED about what we're doing!
-            Debug.Log($"🐋 Whale Conductor initialized! Found {_allWhales.Length} whales.");
-            Debug.Log($"🎵 Using noise-based detection: Human voice (noisy) vs FM synth (pure)");
+            Debug.Log("🎵 Whale Conductor starting up!");
             
-            if (useMelodicLock)
-            {
-                Debug.Log($"🎼 MELODIC MODE ACTIVE! Sing these intervals: {string.Join(", ", targetIntervals)} semitones");
-                Debug.Log($"   (That's C → G → High C - a perfect fifth then an octave!)");
-            }
+            // Find all jellies in the scene
+            RefreshJellyList();
+            
+            // Initialize audio analysis
+            _analysisBuffer = new float[analysisWindowSize];
+            InitializeMicrophone();
+            
+            // Start the musical beat
+            StartCoroutine(BeatCoroutine());
+            
+            Debug.Log($"🎵 Conductor initialized! Found {_allJellies.Length} jellies. Melody: {string.Join("-", System.Array.ConvertAll(melody, note => note.ToString()))} at {bpm} BPM");
         }
 
         private void Update()
@@ -86,218 +83,123 @@ namespace Encounter.Runtime.Environments
             // Check microphone input at specified rate
             if (Time.time - _lastVolumeCheck >= updateRate)
             {
-                CheckMicrophoneInput();
+                CheckForMelodicVoice();
                 _lastVolumeCheck = Time.time;
             }
-        
-            // Refresh whale list periodically (in case whales are spawned/destroyed)
-            if (Time.time % 5f < updateRate) // Every 5 seconds
-            {
-                RefreshWhaleList();
-            }
             
-            // Check for melodic timeout - if they stopped singing mid-melody
-            if (useMelodicLock && detectedIntervals.Count > 0 && !isCurrentlyVoicing)
+            // Refresh jelly list periodically
+            if (Time.time % 5f < Time.deltaTime)
             {
-                if (Time.time - lastNoteTime > maxPauseBetweenNotes)
+                RefreshJellyList();
+            }
+        }
+
+        private IEnumerator BeatCoroutine()
+        {
+            while (true)
+            {
+                // Calculate beat interval from BPM
+                float beatInterval = 60f / bpm;
+                
+                // Send beat to all jellies
+                float currentNote = melody[_currentMelodyIndex].ToFrequency();
+                OnBeat?.Invoke(_currentBeat, currentNote, _isPlayerSinging);
+                
+                if (debugMicrophone)
                 {
-                    Debug.Log("🎵 Melody timed out! Starting over...");
-                    ResetMelodicDetection();
+                    string noteName = melody[_currentMelodyIndex].ToString();
+                    Debug.Log($"🎵 Beat {_currentBeat}: Playing {noteName} ({currentNote:F1}Hz) | Player singing: {_isPlayerSinging}");
                 }
+                
+                // Advance to next beat and melody note
+                _currentBeat++;
+                _currentMelodyIndex = (_currentMelodyIndex + 1) % melody.Length;
+                
+                yield return new WaitForSeconds(beatInterval);
             }
         }
 
         private void InitializeMicrophone()
         {
-            // Get the default microphone
             if (Microphone.devices.Length > 0)
             {
                 _microphoneName = Microphone.devices[0];
                 Debug.Log($"🎤 Using microphone: {_microphoneName}");
-            
-                // Start recording from microphone
+                
                 _microphoneClip = Microphone.Start(_microphoneName, true, 1, sampleRate);
                 _isListening = true;
             }
             else
             {
-                Debug.LogError("No microphone detected! Conductor system disabled.");
-                enabled = false;
+                Debug.LogError("No microphone detected! Voice detection disabled.");
+                _isListening = false;
             }
         }
 
-        private void CheckMicrophoneInput()
+        private void CheckForMelodicVoice()
         {
             if (!_isListening || _microphoneClip == null) return;
-        
+            
             // Get current microphone position
             int micPosition = Microphone.GetPosition(_microphoneName);
             if (micPosition < 0) return;
-        
+            
             // Calculate the number of samples to analyze
             int startPosition = micPosition - analysisWindowSize;
             if (startPosition < 0) return;
-        
+            
             // Get audio data from microphone
             _microphoneClip.GetData(_analysisBuffer, startPosition);
-        
-            // Analyze the audio characteristics
-            bool isHumanVoice = IsLikelyHumanVoice(_analysisBuffer);
-            float rms = CalculateRms(_analysisBuffer);
-        
-            // ✨ NEW: If we're in melodic mode, also detect pitch! ✨
-            if (useMelodicLock && rms >= volumeThreshold && isHumanVoice)
-            {
-                HandleMelodicDetection();
-            }
-            else if (!useMelodicLock)
-            {
-                // Original sustained note behavior
-                HandleSustainedNote(rms, isHumanVoice);
-            }
-            else
-            {
-                // Not singing or not human voice
-                isCurrentlyVoicing = false;
-                currentNoteStartTime = -1f;
-            }
-        
-            // Debug output
-            if (debugMicrophone && Time.time % 0.5f < updateRate)
-            {
-                if (useMelodicLock && currentStablePitch > 0)
-                {
-                    Debug.Log($"🎵 Pitch: {currentStablePitch:F1}Hz | Intervals found: {detectedIntervals.Count}/{targetIntervals.Length}");
-                }
-                else
-                {
-                    Debug.Log($"Vol: {rms:F4} | Human: {isHumanVoice} | Threshold: {volumeThreshold:F4}");
-                }
-            }
-        
-            // Store current buffer for next comparison
-            System.Array.Copy(_analysisBuffer, _previousBuffer, analysisWindowSize);
-        }
-        
-        // 🎵 THE EXCITING NEW MELODIC DETECTION! 🎵
-        void HandleMelodicDetection()
-        {
-            isCurrentlyVoicing = true;
             
-            // Step 1: Get the current pitch using our enhanced method!
-            float currentPitch = EstimateEnhancedPitch(_analysisBuffer);
+            // Check if this sounds like melodic human voice
+            bool isMelodicVoice = IsLikelyMelodicVoice(_analysisBuffer);
+            _isPlayerSinging = isMelodicVoice;
             
-            if (currentPitch <= 0) return; // Couldn't get a good pitch reading
-            
-            // Step 2: Add to our rolling average for stability
-            // Think of this like a low-pass filter for pitch!
-            recentPitches.Enqueue(currentPitch);
-            while (recentPitches.Count > pitchSmoothingFrames)
+            // Debug output (less frequent to reduce spam)
+            if (debugMicrophone && Time.time % 1f < updateRate) // Every 1 second instead of 0.5
             {
-                recentPitches.Dequeue();
-            }
-            
-            // Step 3: Get the stable pitch (median is more stable than mean for pitch!)
-            currentStablePitch = GetMedianPitch();
-            
-            // Step 4: Check if we've held this note long enough
-            if (currentNoteStartTime < 0)
-            {
-                currentNoteStartTime = Time.time;
-                Debug.Log($"🎵 Started singing at {currentStablePitch:F1}Hz");
-            }
-            
-            float noteHeldDuration = Time.time - currentNoteStartTime;
-            
-            // Step 5: If we've held the note long enough, process it!
-            if (noteHeldDuration >= noteHoldTime)
-            {
-                ProcessMelodicNote(currentStablePitch);
-                
-                // Reset for next note
-                currentNoteStartTime = -1f;
-                lastNoteTime = Time.time;
-                
-                // Clear pitch history so next note starts fresh
-                recentPitches.Clear();
+                float rms = CalculateRms(_analysisBuffer);
+                float pitch = EstimatePitch(_analysisBuffer);
+                string status = _isPlayerSinging ? "🎤 SINGING!" : "🎤 Silent";
+                Debug.Log($"{status} | Vol: {rms:F4} | Pitch: {pitch:F1}Hz");
             }
         }
-        
-        // 🎼 This is where we check if they sang the right interval! 🎼
-        void ProcessMelodicNote(float pitch)
+
+        private bool IsLikelyMelodicVoice(float[] audioData)
         {
-            if (basePitch == 0)
-            {
-                // First note! This establishes our reference
-                basePitch = pitch;
-                detectedIntervals.Add(0); // First interval is always 0 (unison with itself!)
-                Debug.Log($"🎵 BASE NOTE established: {pitch:F1}Hz (your 'C')");
-                return;
-            }
+            // Check basic volume level
+            float rms = CalculateRms(audioData);
+            if (rms < volumeThreshold) return false;
             
-            // Calculate the interval from our base pitch
-            // Music theory time! The ratio between frequencies tells us the interval
-            float ratio = pitch / basePitch;
+            // Check if frequency is in human vocal range (now more forgiving)
+            float pitch = EstimatePitch(audioData);
+            if (pitch < fundamentalFreqMin || pitch > fundamentalFreqMax) return false;
             
-            // Convert frequency ratio to semitones
-            // Why 12? Because there are 12 semitones in an octave!
-            // Why log? Because pitch perception is logarithmic!
-            float semitones = 12f * Mathf.Log(ratio) / Mathf.Log(2);
+            // Check for voice-like noise characteristics (more forgiving)
+            float noiseLevel = CalculateNoiseLevel(audioData);
+            if (noiseLevel < noiseThreshold) return false;
             
-            // Which interval should we be checking?
-            int expectedIndex = detectedIntervals.Count;
-            if (expectedIndex >= targetIntervals.Length)
-            {
-                Debug.Log("🎵 Already completed the melody!");
-                return;
-            }
+            // Additional check: make sure we have some sustained energy
+            bool hasSustainedEnergy = rms > volumeThreshold * 0.5f;
             
-            float expectedInterval = targetIntervals[expectedIndex];
-            float difference = Mathf.Abs(semitones - expectedInterval);
-            
-            Debug.Log($"🎵 Sung interval: {semitones:F1} semitones (expected {expectedInterval:F1}, difference: {difference:F1})");
-            
-            // Did they nail it? (Within tolerance)
-            if (difference <= intervalTolerance)
-            {
-                detectedIntervals.Add(semitones);
-                string noteName = expectedIndex == 1 ? "G" : "High C";
-                Debug.Log($"✅ CORRECT! Note {detectedIntervals.Count}: {noteName}");
-                
-                // Check if melody is complete!
-                if (detectedIntervals.Count == targetIntervals.Length)
-                {
-                    Debug.Log("🎊 MELODY COMPLETE! C-G-C sung perfectly! TRIGGERING WHALE CHORUS! 🎊");
-                    TriggerWhaleChorus();
-                    ResetMelodicDetection();
-                }
-            }
-            else
-            {
-                // Wrong interval! Start over
-                Debug.Log($"❌ Oops! That interval was off by {difference:F1} semitones. Try again!");
-                ResetMelodicDetection();
-            }
+            return hasSustainedEnergy;
         }
-        
-        // 🔄 Reset our melodic detection state
-        void ResetMelodicDetection()
+
+        private float CalculateRms(float[] audioData)
         {
-            basePitch = 0;
-            detectedIntervals.Clear();
-            recentPitches.Clear();
-            currentStablePitch = 0;
-            currentNoteStartTime = -1f;
+            float sum = 0f;
+            foreach (var sample in audioData)
+            {
+                sum += sample * sample;
+            }
+            return Mathf.Sqrt(sum / audioData.Length);
         }
-        
-        // 🎯 Enhanced pitch detection using peak-finding instead of just zero crossings!
-        float EstimateEnhancedPitch(float[] audioData)
+
+        private float EstimatePitch(float[] audioData)
         {
-            // Let's find the peaks! Peaks are more reliable than zero crossings
-            // because they're less affected by noise and DC offset
+            // Simple peak-based pitch detection
             List<int> peakPositions = new List<int>();
             
-            // First, let's find the average amplitude to set a good threshold
             float avgAmplitude = 0;
             for (int i = 0; i < audioData.Length; i++)
             {
@@ -305,12 +207,10 @@ namespace Encounter.Runtime.Environments
             }
             avgAmplitude /= audioData.Length;
             
-            // Now find peaks that are significant (above 30% of average)
             float peakThreshold = avgAmplitude * 0.3f;
             
             for (int i = 1; i < audioData.Length - 1; i++)
             {
-                // Is this a peak? Check if it's higher than its neighbors
                 if (audioData[i] > audioData[i-1] && 
                     audioData[i] > audioData[i+1] && 
                     audioData[i] > peakThreshold)
@@ -319,11 +219,8 @@ namespace Encounter.Runtime.Environments
                 }
             }
             
-            // Need at least 2 peaks to measure period!
             if (peakPositions.Count < 2) return 0;
             
-            // Calculate average period between peaks
-            // This is like measuring the distance between wave crests!
             float totalPeriod = 0;
             int validPeriods = 0;
             
@@ -331,8 +228,6 @@ namespace Encounter.Runtime.Environments
             {
                 int period = peakPositions[i] - peakPositions[i-1];
                 
-                // Sanity check - is this a reasonable period for human voice?
-                // Too small = probably noise, too big = probably not the fundamental
                 if (period > sampleRate / fundamentalFreqMax && period < sampleRate / fundamentalFreqMin)
                 {
                     totalPeriod += period;
@@ -343,315 +238,146 @@ namespace Encounter.Runtime.Environments
             if (validPeriods == 0) return 0;
             
             float averagePeriod = totalPeriod / validPeriods;
-            float frequency = sampleRate / averagePeriod;
-            
-            return frequency;
-        }
-        
-        // 📊 Get the median of our recent pitches (more stable than average!)
-        float GetMedianPitch()
-        {
-            if (recentPitches.Count == 0) return 0;
-            
-            // Sort the pitches to find the median
-            List<float> sorted = new List<float>(recentPitches);
-            sorted.Sort();
-            
-            // The median is the middle value - it ignores outliers!
-            return sorted[sorted.Count / 2];
-        }
-        
-        // Original sustained note handling (kept for non-melodic mode)
-        void HandleSustainedNote(float rms, bool isHumanVoice)
-        {
-            if (rms >= volumeThreshold && isHumanVoice)
-            {
-                // Start or continue sustain timer
-                if (_sustainStartTime < 0)
-                {
-                    _sustainStartTime = Time.time;
-                    _hasTriggeredChorus = false;
-                    Debug.Log("🎤 Human voice detected! Keep singing...");
-                }
-                
-                // Check if we've sustained long enough
-                float sustainedDuration = Time.time - _sustainStartTime;
-                if (sustainedDuration >= sustainedTime && !_hasTriggeredChorus)
-                {
-                    TriggerWhaleChorus();
-                    _hasTriggeredChorus = true;
-                }
-            }
-            else
-            {
-                // Reset sustain timer if voice not detected
-                if (_sustainStartTime >= 0)
-                {
-                    float sustainedDuration = Time.time - _sustainStartTime;
-                    if (sustainedDuration < sustainedTime)
-                    {
-                        string reason = !isHumanVoice ? "too pure (not human voice)" : "volume too low";
-                        if (showFrequencyDebug)
-                        {
-                            Debug.Log($"Voice lost ({sustainedDuration:F1}s) - {reason}");
-                        }
-                    }
-                    _sustainStartTime = -1f;
-                }
-            }
-        }
-
-        private float CalculateRms(float[] audioData)
-        {
-            float sum = 0f;
-            foreach (var t in audioData)
-            {
-                sum += t * t;
-            }
-            return Mathf.Sqrt(sum / audioData.Length);
-        }
-
-        private bool IsLikelyHumanVoice(float[] audioData)
-        {
-            // Human voices have noise/irregularities, FM synths are mathematically perfect
-        
-            // 1. Calculate "noise" - how much the signal deviates from being perfectly smooth
-            float noiseLevel = CalculateNoiseLevel(audioData);
-        
-            // 2. Check frequency range (basic sanity check)
-            float dominantFreq = EstimateEnhancedPitch(audioData); // Use our better pitch detection!
-            bool inHumanRange = dominantFreq >= fundamentalFreqMin && dominantFreq <= fundamentalFreqMax;
-        
-            // 3. Check for basic energy
-            float energy = CalculateRms(audioData);
-            bool hasEnoughEnergy = energy > 0.001f;
-        
-            if (showFrequencyDebug && Time.time % 1f < updateRate)
-            {
-                Debug.Log($"Noise: {noiseLevel:F3} (need >{noiseThreshold:F3}) | " +
-                         $"Freq: {dominantFreq:F1}Hz | Human range: {inHumanRange} | Energy: {hasEnoughEnergy}");
-            }
-        
-            // Human voice = noisy enough + reasonable frequency + has energy
-            return noiseLevel >= noiseThreshold && inHumanRange && hasEnoughEnergy;
+            return sampleRate / averagePeriod;
         }
 
         private float CalculateNoiseLevel(float[] audioData)
         {
-            // Measure how "rough" or "irregular" the signal is
-            // Pure sine waves are very smooth, human voices are noisy
-        
             float totalVariation = 0f;
             float totalEnergy = 0f;
-        
+            
             for (int i = 2; i < audioData.Length - 2; i++)
             {
-                // Calculate how much each sample differs from the smooth trend
                 float smoothed = (audioData[i-2] + audioData[i-1] + audioData[i] + audioData[i+1] + audioData[i+2]) / 5f;
                 float deviation = Mathf.Abs(audioData[i] - smoothed);
-            
+                
                 totalVariation += deviation;
                 totalEnergy += Mathf.Abs(audioData[i]);
             }
-        
-            // Normalize by total energy to get relative noise level
+            
             if (totalEnergy < 0.001f) return 0f;
             return totalVariation / totalEnergy;
         }
 
-        private void RefreshWhaleList()
+        private void RefreshJellyList()
         {
-            _allWhales = FindObjectsByType<WhaleCallBehavior>(FindObjectsSortMode.None);
+            _allJellies = FindObjectsByType<WhaleCallBehavior>(FindObjectsSortMode.None);
         }
 
-        private void TriggerWhaleChorus()
+        private string GetNoteName(float frequency)
         {
-            if (_chorusActive) return; // Prevent multiple simultaneous choruses
-        
-            Debug.Log($"🎵 WHALE CHORUS TRIGGERED! 🎵 Conducting {_allWhales.Length} whales!");
-            
-            // Pass the sung melody pitches to the chorus!
-            float[] melodyPitches = new float[detectedIntervals.Count];
-            melodyPitches[0] = basePitch; // Start with the base pitch (C)
-            
-            // Calculate the actual pitches for each interval
-            for (int i = 1; i < detectedIntervals.Count; i++)
-            {
-                // Convert interval (in semitones) back to frequency ratio
-                float ratio = Mathf.Pow(2f, targetIntervals[i] / 12f);
-                melodyPitches[i] = basePitch * ratio;
-            }
-            
-            StartCoroutine(ConductMelodicChorus(melodyPitches));
-        }
-
-        private System.Collections.IEnumerator ConductMelodicChorus(float[] melodyPitches)
-        {
-            _chorusActive = true;
-        
-            // First, pause all whales briefly
-            foreach (var whale in _allWhales)
-            {
-                if (whale != null)
-                {
-                    whale.PauseForChorus(pauseDuration + (melodyPitches.Length * 2f)); // Longer pause for melody
-                }
-            }
-        
-            Debug.Log($"All whales pausing for {pauseDuration} seconds...");
-            yield return new WaitForSeconds(pauseDuration);
-        
-            // Now the whales sing the melody back!
-            Debug.Log("🐋 WHALE MELODIC CHORUS BEGINS! 🐋");
-            
-            if (useMelodicLock && melodyPitches.Length > 0)
-            {
-                // MELODIC MODE: Whales sing the notes in sequence!
-                string[] noteNames = { "C", "G", "High C" };
-                
-                for (int noteIndex = 0; noteIndex < melodyPitches.Length; noteIndex++)
-                {
-                    Debug.Log($"🎵 Whales singing note {noteIndex + 1}: {noteNames[noteIndex]} ({melodyPitches[noteIndex]:F1}Hz)");
-                    
-                    // Each whale sings the same note, but with slight timing variation
-                    foreach (var whale in _allWhales)
-                    {
-                        if (whale != null)
-                        {
-                            float delay = Random.Range(0f, chorusSpread);
-                            StartCoroutine(DelayedMelodicWhaleCall(whale, delay, melodyPitches[noteIndex]));
-                        }
-                    }
-                    
-                    // Wait for this note to finish before the next one
-                    yield return new WaitForSeconds(1.5f); // Time between melody notes
-                }
-                
-                // Optional: Whales all sing the final note together as a big finish!
-                yield return new WaitForSeconds(0.5f);
-                Debug.Log("🎊 FINALE: All whales sing C together! 🎊");
-                
-                foreach (var whale in _allWhales)
-                {
-                    if (whale != null)
-                    {
-                        // All whales sing the tonic (base note) together
-                        float delay = Random.Range(0f, chorusSpread * 0.5f); // Tighter timing for finale
-                        StartCoroutine(DelayedMelodicWhaleCall(whale, delay, basePitch));
-                    }
-                }
-            }
-            else
-            {
-                // SUSTAINED MODE: Original behavior - all whales call at once
-                foreach (var whale in _allWhales)
-                {
-                    if (whale != null)
-                    {
-                        float delay = Random.Range(0f, chorusSpread);
-                        StartCoroutine(DelayedWhaleCall(whale, delay));
-                    }
-                }
-            }
-        
-            // Wait for chorus to finish before allowing another
-            yield return new WaitForSeconds(4f); // Buffer time
-            _chorusActive = false;
-        
-            Debug.Log("Whale melodic chorus complete! The ocean remembers your C-G-C melody!");
-        }
-
-        private System.Collections.IEnumerator DelayedWhaleCall(WhaleCallBehavior whale, float delay)
-        {
-            yield return new WaitForSeconds(delay);
-            if (whale != null)
-            {
-                whale.TriggerChorusCall();
-            }
-        }
-        
-        // ✨ NEW: Make a whale sing a specific pitch! ✨
-        System.Collections.IEnumerator DelayedMelodicWhaleCall(WhaleCallBehavior whale, float delay, float targetPitch)
-        {
-            yield return new WaitForSeconds(delay);
-            if (whale != null)
-            {
-                whale.TriggerMelodicCall(targetPitch);
-            }
+            // Convert frequency back to note name for display
+            MusicalNote note = MusicalNote.FromFrequency(frequency);
+            return note.ToString();
         }
 
         private void OnDestroy()
         {
-            // Clean up microphone
-            if (_isListening)
+            if (_isListening && !string.IsNullOrEmpty(_microphoneName))
             {
                 Microphone.End(_microphoneName);
             }
         }
-    
-        // 🎨 GUI for debugging - now with melodic feedback!
+
+        // 🎨 Debug GUI
         private void OnGUI()
         {
             if (!debugMicrophone) return;
-        
-            GUI.Box(new Rect(10, 10, 350, useMelodicLock ? 200 : 120), "🐋 Whale Conductor 🎵");
-        
-            GUI.Label(new Rect(20, 35, 320, 20), $"Whales found: {_allWhales?.Length ?? 0}");
-            GUI.Label(new Rect(20, 55, 320, 20), $"Microphone: {(_isListening ? "Active" : "Inactive")}");
-            GUI.Label(new Rect(20, 75, 320, 20), $"Mode: {(useMelodicLock ? "🎵 Melodic Lock (C-D-C)" : "🎤 Sustained Note")}");
             
-            if (useMelodicLock)
-            {
-                // Show melodic progress!
-                GUI.Label(new Rect(20, 95, 320, 20), $"Current Pitch: {(currentStablePitch > 0 ? currentStablePitch.ToString("F1") + " Hz" : "Not singing")}");
-                
-                // Visual representation of the melody
-                float startX = 20;
-                float startY = 120;
-                float boxWidth = 100;
-                float boxHeight = 25;
-                
-                string[] noteLabels = { "C", "D", "C" };
-                
-                for (int i = 0; i < targetIntervals.Length; i++)
-                {
-                    // Position boxes at different heights to show pitch relationships!
-                    float yOffset = -targetIntervals[i] * 3; // Visual height represents pitch
-                    
-                    // Color coding: green = completed, yellow = current target, gray = not yet
-                    Color boxColor = Color.gray;
-                    if (i < detectedIntervals.Count) boxColor = Color.green;
-                    else if (i == detectedIntervals.Count && isCurrentlyVoicing) boxColor = Color.yellow;
-                    
-                    GUI.color = boxColor;
-                    GUI.Box(new Rect(startX + i * (boxWidth + 10), startY + yOffset, boxWidth, boxHeight), noteLabels[i]);
-                    GUI.color = Color.white;
-                }
-                
-                // Reset hint
-                if (detectedIntervals.Count > 0 && detectedIntervals.Count < targetIntervals.Length)
-                {
-                    GUI.Label(new Rect(20, 160, 320, 20), 
-                             $"Sing the next note! ({noteLabels[detectedIntervals.Count]})");
-                }
-            }
-            else
-            {
-                // Original sustained note display
-                if (_sustainStartTime >= 0)
-                {
-                    float progress = (Time.time - _sustainStartTime) / sustainedTime;
-                    GUI.Label(new Rect(20, 95, 320, 20), $"🎤 Sustaining: {progress * 100:F1}%");
+            GUI.Box(new Rect(10, 10, 350, 140), "🎵 Whale Conductor Debug");
             
-                    // Progress bar
-                    GUI.Box(new Rect(20, 115, 320, 20), "");
-                    GUI.Box(new Rect(20, 115, 320 * progress, 20), "");
-                }
-                else
-                {
-                    GUI.Label(new Rect(20, 95, 320, 20), "Sing to conduct the whale chorus!");
-                }
+            GUI.Label(new Rect(20, 35, 320, 20), $"BPM: {bpm} | Beat: {_currentBeat}");
+            GUI.Label(new Rect(20, 55, 320, 20), $"Current Note: {melody[_currentMelodyIndex].ToString()}");
+            GUI.Label(new Rect(20, 75, 320, 20), $"Jellies Found: {_allJellies?.Length ?? 0}");
+            GUI.Label(new Rect(20, 95, 320, 20), $"Microphone: {(_isListening ? "Active" : "Inactive")}");
+            
+            // Player singing indicator
+            GUI.color = _isPlayerSinging ? Color.green : Color.gray;
+            GUI.Box(new Rect(20, 115, 320, 25), _isPlayerSinging ? "🎤 PLAYER SINGING!" : "🎤 No voice detected");
+            GUI.color = Color.white;
+        }
+    }
+
+    // 🎼 Musical Note System for Easy Melody Input!
+    [System.Serializable]
+    public class MusicalNote
+    {
+        [SerializeField] private NoteName noteName = NoteName.C;
+        [SerializeField] private int octave = 4;
+        
+        public MusicalNote(NoteName name, int oct)
+        {
+            noteName = name;
+            octave = oct;
+        }
+        
+        public float ToFrequency()
+        {
+            // Calculate frequency using A4 = 440Hz as reference
+            // Formula: freq = 440 * 2^((semitones from A4) / 12)
+            
+            int semitonesFromC = GetSemitonesFromC(noteName);
+            int totalSemitones = (octave - 4) * 12 + semitonesFromC - 9; // -9 because A4 is 9 semitones above C4
+            
+            return 440f * Mathf.Pow(2f, totalSemitones / 12f);
+        }
+        
+        public static MusicalNote FromFrequency(float frequency)
+        {
+            // Convert frequency back to note (approximate)
+            float semitonesFromA4 = 12f * Mathf.Log(frequency / 440f) / Mathf.Log(2f);
+            int totalSemitones = Mathf.RoundToInt(semitonesFromA4);
+            
+            int octave = 4 + (totalSemitones + 9) / 12;
+            int noteIndex = ((totalSemitones + 9) % 12 + 12) % 12;
+            
+            NoteName[] noteNames = {NoteName.C, NoteName.CSharp, NoteName.D, NoteName.DSharp, 
+                                   NoteName.E, NoteName.F, NoteName.FSharp, NoteName.G, 
+                                   NoteName.GSharp, NoteName.A, NoteName.ASharp, NoteName.B};
+            
+            return new MusicalNote(noteNames[noteIndex], octave);
+        }
+        
+        private int GetSemitonesFromC(NoteName note)
+        {
+            switch (note)
+            {
+                case NoteName.C: return 0;
+                case NoteName.CSharp: return 1;
+                case NoteName.D: return 2;
+                case NoteName.DSharp: return 3;
+                case NoteName.E: return 4;
+                case NoteName.F: return 5;
+                case NoteName.FSharp: return 6;
+                case NoteName.G: return 7;
+                case NoteName.GSharp: return 8;
+                case NoteName.A: return 9;
+                case NoteName.ASharp: return 10;
+                case NoteName.B: return 11;
+                default: return 0;
             }
         }
+        
+        public override string ToString()
+        {
+            string noteStr = noteName.ToString().Replace("Sharp", "#");
+            return $"{noteStr}{octave}";
+        }
+    }
+
+    public enum NoteName
+    {
+        C,
+        CSharp,  // C#
+        D,
+        DSharp,  // D#
+        E,
+        F,
+        FSharp,  // F#
+        G,
+        GSharp,  // G#
+        A,
+        ASharp,  // A#
+        B
     }
 }

@@ -104,7 +104,7 @@ AudioSource:
   m_GameObject: {fileID: 311950290042935290}
   m_Enabled: 1
   serializedVersion: 4
-  OutputAudioMixerGroup: {fileID: 0}
+  OutputAudioMixerGroup: {fileID: -3149689191979053012, guid: 54ecfaa3e6ca3ec4b95b4d21c7191adb, type: 2}
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 0}
   m_PlayOnAwake: 0
@@ -152,7 +152,7 @@ AudioSource:
     m_Curve:
     - serializedVersion: 3
       time: 0
-      value: 0
+      value: 1
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -340,6 +340,8 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  voiceType: 0
+  randomizeOnStart: 1
   modulatorFrequency: 100
   modulationDepth: 100
   modulationEnvelope:
@@ -413,16 +415,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 43cbe6652d1664eeaac9f2cc96f806a6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  minCallInterval: 3
-  maxCallInterval: 12
-  responseChance: 0.1
-  listenRange: 80
-  chattiness: 1
-  shyness: 0
+  noteDuration: 1
+  octaveOffset: 0
+  pitchVariation: 0.02
+  baseInterval: 25
+  activeInterval: 1
+  intervalDecayRate: 1
   gillSystem: {fileID: 5975443092655348220}
   glowPropertyName: _GlowIntensity
   baseGlowIntensity: 4
-  useNoteBasedColors: 1
 --- !u!1 &509052372923259863
 GameObject:
   m_ObjectHideFlags: 0
